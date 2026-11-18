@@ -1,0 +1,140 @@
+{
+ "name": "stockz",
+ "tag": "J2m43FUbn87DTKD8FrSdf2G16TdwsdukXfEP7zaTyYyj",
+ "treasury": "",
+ "feeBps": 30,
+ "cash": [
+  {
+   "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "symbol": "USDC",
+   "name": "USD Coin"
+  }
+ ],
+ "stocks": [
+  {
+   "sym": "TTWO",
+   "name": "Take-Two Interactive",
+   "tok": "TTWO",
+   "mint": "TTWofwAge91oFhZs7kpQdyrVRkmevgM88xijGvQFbKo",
+   "kind": "stock",
+   "issuer": "Backpack",
+   "gta": true
+  },
+  {
+   "sym": "MSFT",
+   "name": "Microsoft",
+   "tok": "MSFTx",
+   "mint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+   "kind": "stock",
+   "issuer": "xStocks",
+   "gta": true
+  },
+  {
+   "sym": "AMD",
+   "name": "AMD",
+   "tok": "AMDx",
+   "mint": "XsXcJ6GZ9kVnjqGsjBnktRcuwMBmvKWh8S93RefZ1rF",
+   "kind": "stock",
+   "issuer": "xStocks",
+   "gta": true
+  },
+  {
+   "sym": "GME",
+   "name": "GameStop",
+   "tok": "GMEx",
+   "mint": "Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc",
+   "kind": "stock",
+   "issuer": "xStocks",
+   "gta": true
+  },
+  {
+   "sym": "NVDA",
+   "name": "Nvidia",
+   "tok": "NVDAx",
+   "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+   "kind": "stock",
+   "issuer": "xStocks",
+   "gta": true
+  },
+  {
+   "sym": "SPY",
+   "name": "S&P 500",
+   "tok": "SPYx",
+   "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+   "kind": "etf",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "QQQ",
+   "name": "Nasdaq-100",
+   "tok": "QQQx",
+   "mint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+   "kind": "etf",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "TSLA",
+   "name": "Tesla",
+   "tok": "TSLAx",
+   "mint": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "AAPL",
+   "name": "Apple",
+   "tok": "AAPLx",
+   "mint": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "GOOGL",
+   "name": "Alphabet",
+   "tok": "GOOGLx",
+   "mint": "XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "META",
+   "name": "Meta",
+   "tok": "METAx",
+   "mint": "Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "AMZN",
+   "name": "Amazon",
+   "tok": "AMZNx",
+   "mint": "Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "NFLX",
+   "name": "Netflix",
+   "tok": "NFLXx",
+   "mint": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "COIN",
+   "name": "Coinbase",
+   "tok": "COINx",
+   "mint": "Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu",
+   "kind": "stock",
+   "issuer": "xStocks"
+  },
+  {
+   "sym": "HOOD",
+   "name": "Robinhood",
+   "tok": "HOODx",
+   "mint": "XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg",
+   "kind": "stock",
+   "issuer": "xStocks"
+  }
+ ]
+}
