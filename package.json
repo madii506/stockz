@@ -1,1 +1,17 @@
-{ "name": "stockz", "private": true, "version": "1.0.0", "engines": { "node": "22.x" } }
+{
+  "name": "stockz",
+  "private": true,
+  "version": "1.0.0",
+  "description": "STOCKZ: the GTA VI stock desk. Trade tokenized GTA stocks, launch coins priced in them, swap OTC.",
+  "engines": { "node": "22.x" },
+  "dependencies": {
+    "@pump-fun/pump-sdk": "4.3.1",
+    "@solana/web3.js": "1.99.0",
+    "@solana/spl-token": "0.4.15",
+    "@vercel/blob": "2.8.2",
+    "@noble/curves": "1.9.7",
+    "bs58": "6.0.0",
+    "bn.js": "5.2.1"
+  },
+  "overrides": { "rpc-websockets": "9.3.3" }
+}
