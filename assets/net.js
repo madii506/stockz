@@ -190,3 +190,10 @@ export function txDetail(sig, owner) {
   }).catch(() => null);
   TXD.set(k, p); return p;
 }
+
+// every Solana coin by name, ticker or address, ranked by Jupiter (verified and liquid first)
+export async function searchTokens(q) {
+  const r = await j(`${JUP}/tokens/v2/search?query=${encodeURIComponent(q)}`, {}, 8000), L = Array.isArray(r) ? r : [];
+  for (const t of L) if (t && t.id) TOK.set(t.id, { t, at: Date.now() });
+  return L.filter(t => t && t.id);
+}

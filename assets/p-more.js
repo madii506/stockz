@@ -51,6 +51,7 @@ export async function transfer(main, ctx, rest) {
     if (!name) return toast('Give the payee a name.', 'err'); if (!isAddr(addr)) return toast('That is not a Solana address.', 'err');
     store.set(PK, [{ name, addr }, ...payees().filter(p => p.addr !== addr)].slice(0, 30)); $('#pf', main).hidden = true; $('#pn', main).value = ''; drawP(); who(); toast(`${esc(name)} saved`, 'ok', 2000); };
   $('#to', main).oninput = who; drawP();
+  if (rest[0] === 'to' && isAddr(rest[1])) { $('#to', main).value = rest[1]; who(); $('#am', main).focus(); }   // from search: send to this wallet
   $('#max', main).onclick = () => { const a = assets[+sel.value]; if (a) $('#am', main).value = +a.ui.toFixed(Math.min(6, a.dec ?? 6)); };
   $('#rv', main).onclick = () => {
     const a = assets[+sel.value], to = $('#to', main).value.trim(), v = parseFloat($('#am', main).value), note = $('#nt', main).value.trim();

@@ -1,6 +1,6 @@
 // STOCKZ · the launchpad: a pump.fun coin whose curve is priced in a GTA stock, and every coin launched here
-import { $, $$, esc, usd, num, pct, tone, short, ago, ICON, BASKET, SOL, CONFIG, bySym, toast, copy, solscan } from './core.js';
-import { api, tokens, price, chg24, vol24, rpc, confirm, order, execute, candles, stockzCoins } from './net.js';
+import { $, $$, esc, usd, num, pct, tone, short, ago, ICON, BASKET, SOL, CONFIG, bySym, toast, copy, solscan, usdp, ALL } from './core.js';
+import { api, tokens, price, chg24, vol24, rpc, confirm, order, execute, candles, stockzCoins, searchTokens, trades, pools, startTicks } from './net.js';
 import { area } from './chart.js';
 import { signAll } from './wallet.js';
 import { web3 } from './p-more.js';
@@ -135,20 +135,101 @@ async function feesPanel(main, ctx) {
 }
 
 // one coin: its price, curve and chart, priced in the stock it was launched on
+// any coin on Solana, inside STOCKZ: its chart, the checks to make before buying, where it trades, and an order ticket
 async function coinPage(main, ctx, mint) {
-  main.innerHTML = '<div class="panel"><div class="pad"><div class="skel" style="height:180px"></div></div></div>';
-  const [M, L] = await Promise.all([tokens([mint], true), stockzCoins().catch(() => [])]), t = M[mint], c = L.find(x => x.mint === mint), q = c ? (bySym(c.quote) || SOLQ) : null;
-  const curve = t && (t.bondingCurve != null ? +t.bondingCurve : null);
-  main.innerHTML = `<div class="ph1"><div style="display:flex;gap:14px;align-items:center">${t && t.icon ? `<img src="${esc(t.icon)}" alt="" style="width:56px;height:56px;border-radius:14px">` : '<span class="ph" style="width:56px;height:56px;border-radius:14px;display:grid;place-items:center;background:var(--bg3)">NEW</span>'}
-      <div><h1>${esc(t ? t.name : short(mint))} <span class="mut" style="font-size:18px">${t ? '$' + esc(t.symbol) : ''}</span></h1><p>${q ? 'Priced in ' + esc(q.sym) + ' \u00b7 ' : ''}${c && c.t ? 'launched on STOCKZ ' + esc(ago(c.t)) : 'Solana token'}</p></div></div>
-      <div class="statusrow"><button class="btn ghost sm" id="cca">Copy CA</button><a class="btn ghost sm" href="https://pump.fun/coin/${mint}" target="_blank" rel="noopener">pump.fun ${ICON.ext}</a><button class="btn pri sm" id="cbuy">Buy</button></div></div>
-    <div class="cols"><div class="stack"><div class="panel"><div class="qhead"><span class="px" id="cpx">${t ? usd(price(t)) : '\u2014'}</span><span class="num ${tone(t && chg24(t))}" style="font-weight:700">${t ? pct(chg24(t)) + ' today' : ''}</span></div>
-        <div class="chartbox"><canvas id="ccv"></canvas><div class="empty" id="cce">Loading chart\u2026</div></div></div>
-      ${curve != null ? `<div class="panel"><header><h2>Bonding curve</h2><span class="num">${curve.toFixed(1)}%</span></header><div class="pad"><div class="meter"><i style="width:${Math.min(100, curve).toFixed(1)}%"></i></div><p class="sm mut" style="margin:10px 0 0">When the curve fills, pump.fun moves the coin into its own pool${q ? ', still paired with ' + esc(q.sym) : ''}.</p></div></div>` : ''}</div>
-      <div class="stack"><div class="panel"><header><h2>Stats</h2></header><div class="pad"><dl class="kv"><dt>Market cap</dt><dd>${t ? usd(t.mcap) : '\u2014'}</dd><dt>Liquidity</dt><dd>${t ? usd(t.liquidity, 0) : '\u2014'}</dd><dt>24h volume</dt><dd>${t ? usd(vol24(t), 0) : '\u2014'}</dd><dt>Holders</dt><dd>${t ? num(t.holderCount) : '\u2014'}</dd><dt>Mint</dt><dd class="mono">${esc(short(mint))}</dd>${c ? `<dt>Launch tx</dt><dd><a href="${solscan(c.sig)}" target="_blank" rel="noopener">${esc(short(c.sig))}</a></dd>` : ''}</dl></div></div>
-        ${q && q.mint !== SOL ? `<div class="panel"><header><h2>Priced in ${esc(q.sym)}</h2><a class="sm" href="#/app/trade/${q.sym}">Trade ${esc(q.sym)}</a></header><div class="pad sm">Buyers pay for this coin in ${esc(q.name)}. To buy it with SOL, STOCKZ routes your order through Jupiter in one transaction.</div></div>` : ''}</div></div>`;
-  $('#cca', main).onclick = () => copy(mint); $('#cbuy', main).onclick = () => quickBuy(ctx, mint, t ? t.symbol : 'coin');
-  candles(mint, 'minute', 15, 96).then(cs => { if (cs.length < 2) throw 0; $('#cce', main).hidden = true; area($('#ccv', main), cs, { mode: 'candles', vol: true }); }).catch(() => { const e = $('#cce', main); if (e) e.textContent = 'No chart yet. Charts appear after the first trades.'; });
+  main.innerHTML = '<div class="panel"><div class="pad"><div class="skel" style="height:22px;width:40%;margin-bottom:14px"></div><div class="skel" style="height:220px"></div></div></div>';
+  const stock = ALL.find(x => x.mint === mint); if (stock) { location.hash = '#/app/trade/' + stock.sym; return; }   // GTA stocks have their own page
+  const [M, L, S1] = await Promise.all([tokens([mint], true).catch(() => ({})), stockzCoins().catch(() => []), searchTokens(mint).catch(() => [])]);
+  const t = M[mint] || S1.find(x => x.id === mint), c = L.find(x => x.mint === mint), q = c ? (bySym(c.quote) || SOLQ) : null;
+  if (!t) { main.innerHTML = `<div class="ph1"><div><h1>No coin at this address</h1><p>${esc(short(mint))} isn't a coin that trades on Solana. If it's a wallet, you can send money to it.</p></div></div><div class="panel"><div class="pad" style="text-align:center;padding:36px"><a class="btn pri" href="#/app/transfer/to/${mint}">Send money to this wallet</a></div></div>`; return; }
+  const st = t.stats24h || {}, a = t.audit || {}, ch = chg24(t), curve = t.bondingCurve != null ? +t.bondingCurve : null, sym = t.symbol || 'coin';
+  const born = t.firstPool && t.firstPool.createdAt ? Date.parse(t.firstPool.createdAt) : c && c.t ? c.t : null;
+  // the checks people make before buying a coin, from Jupiter's audit of the token
+  const checks = [
+    a.mintAuthorityDisabled == null ? null : [a.mintAuthorityDisabled, 'Mint authority', a.mintAuthorityDisabled ? 'Renounced. No one can print more.' : 'Active. The creator can still print more.'],
+    a.freezeAuthorityDisabled == null ? null : [a.freezeAuthorityDisabled, 'Freeze authority', a.freezeAuthorityDisabled ? 'Renounced. No one can freeze your coins.' : 'Active. The creator can freeze wallets.'],
+    a.topHoldersPercentage == null ? null : [a.topHoldersPercentage < 35, 'Top 10 holders', `Hold ${(+a.topHoldersPercentage).toFixed(1)}% of the supply.`],
+    t.liquidity == null ? null : [t.liquidity >= 25000, 'Liquidity', t.liquidity >= 25000 ? `${usd(t.liquidity, 0)} in pools.` : `Only ${usd(t.liquidity, 0)}. Large orders move the price a lot.`],
+    [!!t.isVerified, 'Jupiter', t.isVerified ? 'Verified token.' : 'Not verified by Jupiter.'],
+    t.organicScore == null ? null : [t.organicScore >= 50, 'Organic activity', `Score ${Math.round(t.organicScore)} of 100${t.organicScoreLabel ? ' (' + esc(t.organicScoreLabel) + ')' : ''}.`],
+  ].filter(Boolean);
+  const pump = /pump$/.test(mint) || !!c, buys = st.numBuys, sells = st.numSells;
+  main.innerHTML = `<div class="ph1"><div style="display:flex;gap:14px;align-items:center">${t.icon ? `<img src="${esc(t.icon)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover">` : `<span class="ph" style="width:56px;height:56px;border-radius:50%;display:grid;place-items:center">${esc(sym.slice(0, 4))}</span>`}
+      <div><h1>${esc(t.name || sym)} <span class="mut" style="font-size:18px">$${esc(sym)}</span>${t.isVerified ? `<i class="vf" title="Verified on Jupiter">${ICON.check}</i>` : ''}</h1><p>${q ? 'Priced in ' + esc(q.sym) + ' · ' : ''}${c && c.t ? 'launched on STOCKZ ' + esc(ago(c.t)) : born ? 'Solana coin · trading since ' + esc(ago(born)) : 'Solana coin'}</p></div></div>
+      <div class="statusrow"><button class="btn ghost sm" id="cca">${ICON.doc} Copy CA</button>${t.website ? `<a class="btn ghost sm" href="${esc(t.website)}" target="_blank" rel="noopener">Website</a>` : ''}${t.twitter ? `<a class="btn ghost sm" href="${esc(t.twitter)}" target="_blank" rel="noopener">X</a>` : ''}${pump ? `<a class="btn ghost sm" href="https://pump.fun/coin/${mint}" target="_blank" rel="noopener">pump.fun</a>` : ''}</div></div>
+    <div class="cols"><div class="stack">
+      <div class="panel"><div class="qhead"><span class="px" id="cpx" data-live-px="${mint}">${usdp(price(t))}</span><span class="num ${tone(ch)}" style="font-weight:700">${ch != null ? pct(ch) + ' today' : ''}</span>
+          <span class="seg" id="ctf" style="margin-left:auto">${['1H', '1D', '1W', '1M'].map(k => `<button data-v="${k}" class="${k === '1D' ? 'on' : ''}">${k}</button>`).join('')}</span></div>
+        <div class="chartbox"><canvas id="ccv"></canvas><div class="empty" id="cce">Loading chart…</div></div><div class="pad sm mut" id="crt" style="padding-top:0"></div></div>
+      ${curve != null ? `<div class="panel"><header><h2>Bonding curve</h2><span class="num">${curve.toFixed(1)}%</span></header><div class="pad"><div class="meter"><i style="width:${Math.min(100, curve).toFixed(1)}%"></i></div><p class="sm mut" style="margin:10px 0 0">When the curve fills, the coin moves to a full pool on PumpSwap.</p></div></div>` : ''}
+      <div class="panel"><header><h2>Time & sales</h2><span class="pill"><span class="dot"></span> live</span></header><div class="flush" style="max-height:380px;overflow:auto"><table class="tbl"><thead><tr><th>Time</th><th>Side</th><th class="r">Price</th><th class="r">Value</th></tr></thead><tbody id="cts"><tr><td colspan="4" class="empty2">Reading the latest trades…</td></tr></tbody></table></div></div>
+      <div class="panel"><header><h2>Where $${esc(sym)} trades</h2><span class="sm mut">pools on Solana</span></header><div class="flush"><table class="tbl"><thead><tr><th>Pool</th><th class="hide-s">Venue</th><th class="r">Liquidity</th><th class="r">24h volume</th></tr></thead><tbody id="cpl"><tr><td colspan="4" class="empty2">Loading…</td></tr></tbody></table></div></div>
+      ${q && q.mint !== SOL ? `<div class="panel"><header><h2>Priced in ${esc(q.sym)}</h2><a class="sm" href="#/app/trade/${q.sym}">Trade ${esc(q.sym)}</a></header><div class="pad sm">Buyers pay for this coin in ${esc(q.name)}. To buy it with SOL, STOCKZ routes your order through ${esc(q.sym)} automatically.</div></div>` : ''}
+    </div><div class="stack">
+      <div class="panel ticket" id="ctk"></div>
+      <div class="panel"><header><h2>Before you buy</h2></header><div class="list checks">${checks.map(([okk, k, v]) => `<div class="it"><i class="ck ${okk ? 'g' : 'w'}">${okk ? ICON.check : '!'}</i><span><b>${k}</b><small class="mut" style="display:block">${v}</small></span></div>`).join('') || '<div class="empty2">No audit data for this coin yet.</div>'}</div></div>
+      <div class="panel"><header><h2>Stats</h2></header><div class="pad"><dl class="kv"><dt>Price</dt><dd data-live-px="${mint}">${usdp(price(t))}</dd><dt>Market cap</dt><dd>${usd(t.mcap)}</dd><dt>Fully diluted</dt><dd>${usd(t.fdv)}</dd><dt>Liquidity</dt><dd>${usd(t.liquidity, 0)}</dd><dt>24h volume</dt><dd>${usd(vol24(t), 0)}</dd>${buys != null ? `<dt>24h buys / sells</dt><dd>${num(buys)} / ${num(sells)}</dd>` : ''}${st.numTraders != null ? `<dt>24h traders</dt><dd>${num(st.numTraders)}</dd>` : ''}<dt>Holders</dt><dd>${t.holderCount != null ? num(t.holderCount) : '—'}</dd><dt>Contract</dt><dd class="mono"><a href="#" id="cca2">${esc(short(mint))}</a></dd></dl></div></div>
+    </div></div><button class="btn pri cfab" id="cfab">${ICON.chart} Buy $${esc(sym)}</button>`;
+  const fab = $('#cfab', main); fab.onclick = () => $('#ctk', main).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  try { new IntersectionObserver(([e]) => fab.classList.toggle('hide', e.isIntersecting)).observe($('#ctk', main)); } catch {}
+  $('#cca', main).onclick = () => copy(mint); $('#cca2', main).onclick = e => { e.preventDefault(); copy(mint); };
+  coinTicket($('#ctk', main), ctx, t); startTicks([mint], () => {});
+  // the chart, at four timeframes
+  const TF = { '1H': ['minute', 1, 60], '1D': ['minute', 15, 96], '1W': ['hour', 1, 168], '1M': ['hour', 4, 180] };
+  const chart = k => { const [tf, ag, li] = TF[k], e = $('#cce', main); if (e) { e.hidden = false; e.textContent = 'Loading chart…'; }
+    candles(mint, tf, ag, li).then(cs => { if (!document.body.contains(main) || cs.length < 2) throw 0; $('#cce', main).hidden = true; area($('#ccv', main), cs, { mode: 'candles', vol: true, long: k === '1M' || k === '1W' });
+      const hi = Math.max(...cs.map(x => x.h)), lo = Math.min(...cs.map(x => x.l)), d = (cs[cs.length - 1].c / cs[0].o - 1) * 100;
+      const r = $('#crt', main); if (r) r.innerHTML = `${k} change <b class="${tone(d)}">${pct(d)}</b> · high <b>${usdp(hi)}</b> · low <b>${usdp(lo)}</b>`; })
+      .catch(() => { const e2 = $('#cce', main); if (e2) e2.textContent = 'No chart yet. Charts appear after the first trades.'; }); };
+  $$('#ctf button', main).forEach(b => b.onclick = () => { $$('#ctf button', main).forEach(x => x.classList.toggle('on', x === b)); chart(b.dataset.v); }); chart('1D');
+  // the trade tape and the pools behind it
+  let seen = new Set(), first = true;
+  const tape = async () => { try { const R = (await trades(mint)).slice(0, 30), el = $('#cts', main); if (!el) return;
+      el.innerHTML = R.length ? R.map(x => `<tr class="${!first && !seen.has(x.tx) ? (x.buy ? 'fu' : 'fd') : ''}"><td class="mut sm num">${new Date(x.t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</td><td><span class="pill ${x.buy ? 'g' : 'r'}">${x.buy ? 'Buy' : 'Sell'}</span></td><td class="r num">${usdp(x.px)}</td><td class="r num"><b>${usd(x.usd)}</b></td></tr>`).join('') : '<tr><td colspan="4" class="empty2">No trades yet.</td></tr>';
+      R.forEach(x => seen.add(x.tx)); first = false; } catch { const el = $('#cts', main); if (el && first) el.innerHTML = '<tr><td colspan="4" class="empty2">The trade tape is unavailable right now.</td></tr>'; } };
+  tape(); const iv = setInterval(() => { if (!document.hidden) tape(); }, 15000);
+  pools(mint).then(P => { const el = $('#cpl', main); if (!el) return; el.innerHTML = P.slice(0, 6).map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="hide-s mut sm">${esc((x.dex || '').replace(/[-_]/g, ' '))}</td><td class="r num">${usd(x.liq, 0)}</td><td class="r num">${usd(x.vol, 0)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty2">No pools yet. This coin may still be on its bonding curve.</td></tr>'; })
+    .catch(() => { const el = $('#cpl', main); if (el) el.innerHTML = '<tr><td colspan="4" class="empty2">Unavailable right now.</td></tr>'; });
+  return () => clearInterval(iv);
+}
+
+// an order ticket for any coin: buy with SOL, sell back to SOL, through Jupiter Ultra
+function coinTicket(box, ctx, t) {
+  const mint = t.id, sym = t.symbol || 'coin', dec = t.decimals != null ? t.decimals : 6; let side = 'buy', o = null, n = 0, tm = null;
+  box.innerHTML = `<header><h2>Trade $${esc(sym)}</h2><span class="seg buy" id="ks"><button class="b on" data-v="buy">Buy</button><button class="s" data-v="sell">Sell</button></span></header>
+    <div class="pad"><label class="fld"><span id="kl">You pay</span><div class="inrow"><input id="ka" inputmode="decimal" placeholder="0.00" autocomplete="off"><span class="unit" id="ku">SOL</span></div></label>
+      <div class="presets" id="kp"></div><div class="sm mut" id="kb" style="margin-top:8px">—</div>
+      <div class="est" id="ke"><dl class="kv"><dt>You get</dt><dd>—</dd><dt>Price impact</dt><dd>—</dd><dt>Route</dt><dd>—</dd></dl></div>
+      <button class="btn pri wide lg" id="kg" disabled>${ctx.S ? 'Review order' : 'Sign in to trade'}</button><p class="xs mut" style="margin:10px 0 0">Quotes come from Jupiter Ultra and refresh as you type. Nothing moves until your wallet signs.</p></div>`;
+  const $k = s => box.querySelector(s), held = () => { const h = ctx.cached(); if (!h) return null; if (side === 'buy') return Math.max(0, h.sol - .01); const r = [...h.stocks, ...h.cash, ...h.other].find(x => x.mint === mint); return r ? r.ui : 0; };
+  const draw = () => { $k('#kl').textContent = side === 'buy' ? 'You pay' : `You sell`; $k('#ku').textContent = side === 'buy' ? 'SOL' : '$' + sym;
+    $k('#kp').innerHTML = (side === 'buy' ? ['0.1', '0.5', '1'].map(v => `<button data-v="${v}">${v} SOL</button>`) : []).concat(['25%', '50%', 'Max'].map(v => `<button data-p="${v}">${v}</button>`)).join('');
+    box.querySelectorAll('#kp button').forEach(b => b.onclick = () => { const B = held(); if (b.dataset.v) $k('#ka').value = b.dataset.v; else if (B != null) $k('#ka').value = +(B * (b.dataset.p === 'Max' ? 1 : parseFloat(b.dataset.p) / 100)).toFixed(side === 'buy' ? 4 : Math.min(6, dec)); requote(); });
+    const B = held(); $k('#kb').textContent = !ctx.S ? 'Sign in to trade from your balance.' : B == null ? 'Loading your balance…' : `Available: ${num(B)} ${side === 'buy' ? 'SOL' : '$' + sym}`; };
+  const requote = () => { clearTimeout(tm); tm = setTimeout(async () => {
+    const v = parseFloat($k('#ka').value), k = ++n, btn = $k('#kg'), est = $k('#ke'); o = null; btn.disabled = true; if (!(v > 0)) return;
+    est.innerHTML = '<div class="skel" style="height:70px"></div>';
+    try { const raw = side === 'buy' ? Math.floor(v * 1e9) : Math.floor(v * 10 ** dec), p = { inputMint: side === 'buy' ? SOL : mint, outputMint: side === 'buy' ? mint : SOL, amount: String(raw) }; if (ctx.S) p.taker = ctx.S.address;
+      const r = await order(p); if (k !== n) return; o = { r, v };
+      const got = side === 'buy' ? +r.outAmount / 10 ** dec : +r.outAmount / 1e9, imp = r.priceImpactPct != null ? +r.priceImpactPct * (Math.abs(+r.priceImpactPct) < 1 ? 100 : 1) : null;
+      est.innerHTML = `<dl class="kv"><dt>You get</dt><dd>${num(got)} ${side === 'buy' ? '$' + esc(sym) : 'SOL'}</dd><dt>Value</dt><dd>${usd(r.outUsdValue != null ? +r.outUsdValue : null)}</dd><dt>Price impact</dt><dd class="${imp != null && Math.abs(imp) > 2 ? 'dn' : ''}">${imp != null ? imp.toFixed(2) + '%' : '—'}</dd><dt>Route</dt><dd>${esc(((r.routePlan || [])[0] || {}).swapInfo ? r.routePlan[0].swapInfo.label : 'Jupiter')}</dd></dl>${r.errorMessage ? `<div class="note r" style="margin-top:10px">${ICON.help}<span>${esc(r.errorMessage)}</span></div>` : ''}`;
+      o.got = got; btn.disabled = !ctx.S ? false : !(ctx.S.demo || r.transaction); }
+    catch (e) { if (k === n) est.innerHTML = `<div class="note r">${ICON.help}<span>No quote right now: ${esc(e.message)}</span></div>`; } }, 300); };
+  box.querySelectorAll('#ks button').forEach(b => b.onclick = () => { side = b.dataset.v; box.querySelectorAll('#ks button').forEach(x => x.classList.toggle('on', x === b)); $k('#ka').value = ''; o = null; $k('#kg').disabled = true; draw(); });
+  $k('#ka').oninput = requote;
+  $k('#kg').onclick = () => {
+    if (!ctx.S) return ctx.actions.needSignIn('coins/' + mint);
+    if (!o) return; const { r, v, got } = o, m = document.createElement('div'); m.className = 'veil';
+    m.innerHTML = `<div class="modal"><header><h3>Review order</h3><button class="x" data-c>${ICON.close}</button></header><div class="body"><dl class="kv"><dt>Order</dt><dd>${side === 'buy' ? 'Buy' : 'Sell'} $${esc(sym)}</dd><dt>You pay</dt><dd>${num(v)} ${side === 'buy' ? 'SOL' : '$' + esc(sym)}</dd><dt>You get (est.)</dt><dd>${num(got)} ${side === 'buy' ? '$' + esc(sym) : 'SOL'}</dd><dt>Route</dt><dd>Jupiter Ultra</dd></dl>
+      ${t.isVerified ? '' : `<div class="note w" style="margin-top:12px">${ICON.shield}<span>This coin isn't verified by Jupiter. Check the contract address before you buy.</span></div>`}</div><footer><button class="btn ghost" data-c>Cancel</button><button class="btn pri" id="kc">Place order</button></footer></div>`;
+    document.body.appendChild(m); m.querySelectorAll('[data-c]').forEach(b => b.onclick = () => m.remove());
+    m.querySelector('#kc').onclick = async () => { const b = m.querySelector('#kc'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Approve in your wallet';
+      try { await ctx.wallet(); const [sg] = await signAll([b64d(r.transaction)]); b.innerHTML = '<span class="spin"></span> Sending'; const x = await execute(b64e(sg), r.requestId); if (x.status !== 'Success') throw new Error(x.error || 'The order was not filled.');
+        addReceipt(ctx.S.address, { kind: side === 'buy' ? 'Bought' : 'Sold', text: `${side === 'buy' ? 'Bought' : 'Sold'} ${num(side === 'buy' ? got : v)} $${sym}`, sig: x.signature });
+        m.remove(); toast(`${side === 'buy' ? 'Bought' : 'Sold'} $${esc(sym)}`, 'ok', 6000); $k('#ka').value = ''; ctx.hold(true).then(draw).catch(() => {}); }
+      catch (e) { if (document.body.contains(m)) { b.disabled = false; b.textContent = 'Try again'; } toast(esc(/reject|denied|cancel/i.test(e.message) ? 'You cancelled in your wallet.' : e.message), 'err', 8000); } };
+  };
+  draw(); if (ctx.S) ctx.hold(false).then(draw).catch(() => {});
 }
 
 // buy any coin with SOL through Jupiter Ultra (it routes pump.fun curves too)

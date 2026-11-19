@@ -61,6 +61,14 @@ export function usd(v, d) {
   if (a > 0 && a < .01) return sg + '<$0.01';
   return sg + '$' + a.toLocaleString('en-US', { minimumFractionDigits: d ?? 2, maximumFractionDigits: d ?? 2 });
 }
+// coin prices: a memecoin can be worth a millionth of a cent, so tiny prices keep their digits: $0.0₅1234 means $0.000001234
+const SUBS = '₀₁₂₃₄₅₆₇₈₉';
+export function usdp(v) {
+  if (!ok(v)) return '—'; const a = Math.abs(v), sg = v < 0 ? '-' : '';
+  if (a >= 1 || a === 0) return usd(v); if (a >= .01) return sg + '$' + a.toFixed(4);
+  const z = -Math.floor(Math.log10(a)) - 1, sig = (a * 10 ** (z + 1)).toFixed(3).replace('.', '').replace(/0+$/, '');   // z = zeros after the point
+  return z >= 3 ? `${sg}$0.0${String(z).split('').map(d => SUBS[+d]).join('')}${sig}` : sg + '$' + (+a.toPrecision(4)).toString();
+}
 export function num(v, d = 4) {
   if (!ok(v)) return '—'; const a = Math.abs(v);
   if (a >= 1e9) return (v / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M';

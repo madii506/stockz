@@ -1,7 +1,7 @@
 // STOCKZ · online banking: the top bar, the side menu and the pages
-import { $, $$, esc, short, mask, ICON, EMBLEM, ALL, CONFIG, gtaLeft, nyse, store, toast, usd, on, emit, copy, theme, isDemo } from './core.js';
+import { $, $$, esc, short, mask, ICON, EMBLEM, ALL, CONFIG, gtaLeft, nyse, store, toast, usd, on, emit, copy, theme, isDemo, usdp, pct, tone } from './core.js';
 import { W, connect } from './wallet.js';
-import { holdings, tokens, price, chg24, startTicks } from './net.js';
+import { holdings, tokens, price, chg24, startTicks, searchTokens } from './net.js';
 
 const NAV = [
   ['Accounts', [['overview', 'home', 'Overview'], ['portfolio', 'wallet', 'Portfolio'], ['activity', 'list', 'Activity'], ['statements', 'doc', 'Statements']]],
@@ -80,7 +80,7 @@ function frame() {
       <a class="logo" href="#/app/overview">${EMBLEM}<b class="wm">STOCKZ</b></a>
       <div class="srch">${ICON.search}<input id="q" placeholder="Search stocks, coins or addresses" autocomplete="off" aria-label="Search"><div class="res" id="qres"></div></div>
       <div class="chips">
-        <button class="ibtn" id="thm" aria-label="Day or night" title="Day or night">${theme.get() === 'dark' ? ICON.sun : ICON.moon}</button><button class="ibtn" id="eye" aria-label="Hide balances" title="Hide balances">${ICON.eye}</button><button class="ibtn" id="bell" aria-label="Alerts">${ICON.bell}<span class="bd" id="bdot" hidden></span></button>
+        <button class="ibtn msrch" id="msrch" aria-label="Search coins and stocks">${ICON.search}</button><button class="ibtn" id="thm" aria-label="Day or night" title="Day or night">${theme.get() === 'dark' ? ICON.sun : ICON.moon}</button><button class="ibtn" id="eye" aria-label="Hide balances" title="Hide balances">${ICON.eye}</button><button class="ibtn" id="bell" aria-label="Alerts">${ICON.bell}<span class="bd" id="bdot" hidden></span></button>
         ${S ? `<button class="me${isDemo(S) ? ' demo' : ''}" id="me"><span class="av">${isDemo(S) ? 'D' : esc(S.address.slice(0, 2).toUpperCase())}</span><b>${isDemo(S) ? 'Demo account' : esc(short(S.address))}</b></button>` : `<button class="btn pink sm" data-signin>Sign in</button>`}</div></div>
     <div class="tape" aria-label="Live prices"><div class="tr" id="tape">${ALL.map(x => `<a href="#/app/trade/${x.sym}" data-m="${x.mint}"><b>${x.sym}</b><span class="p">\u2014</span><span class="c"></span></a>`).join('')}</div></div>
     <aside class="side">${NAV.map(([h, items]) => `<h6>${h}</h6>` + items.map(([p, i, t]) => `<a href="#/app/${p}" data-p="${p}">${ICON[i]}${t}</a>`).join('')).join('')}</aside>
@@ -108,6 +108,7 @@ function wire(root) {
     setTimeout(() => document.addEventListener('click', function f(ev) { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('click', f); } }), 0);
   };
   $('#bell', root).onclick = e => { e.stopPropagation(); bellMenu(root); };
+  $('#msrch', root).onclick = () => palette();
   $('#bmore', root).onclick = () => $('.side', root).classList.toggle('open');
   $('#thm', root).onclick = () => { const t = theme.get() === 'dark' ? 'light' : 'dark'; theme.set(t); $('#thm', root).innerHTML = t === 'dark' ? ICON.sun : ICON.moon; const r = location.hash; setTimeout(() => window.dispatchEvent(new Event('resize')), 30); };
   const priv = on => { document.body.classList.toggle('privacy', on); store.set('privacy', on); $('#eye', root).style.background = on ? 'rgba(232,36,122,.5)' : ''; };
@@ -123,7 +124,7 @@ function wire(root) {
     emit('tick', out);
     for (const el of document.querySelectorAll('[data-live-px], #tape a[data-m] .p')) {
       const m = el.dataset.livePx || (el.parentElement && el.parentElement.dataset.m), t = m && out[m]; if (!t) continue;
-      const txt = usd(t.p); if (el.textContent === txt) continue; el.textContent = txt;
+      const txt = usdp(t.p); if (el.textContent === txt) continue; el.textContent = txt;
       if (t.old != null && t.old !== t.p) { el.classList.remove('fu', 'fd'); void el.offsetWidth; el.classList.add(t.p > t.old ? 'fu' : 'fd'); }
     }
   });
@@ -144,13 +145,23 @@ function wire(root) {
   });
   // search: stocks by name or ticker, a mint or wallet address
   const q = $('#q', root), res = $('#qres', root);
+  // every coin on Solana comes up by name, ticker or address, and opens inside STOCKZ where you can check it and buy it
+  let sT = null, sN = 0;
   q.oninput = () => {
-    const s = q.value.trim().toLowerCase(); if (!s) { res.classList.remove('on'); return; }
-    const hits = ALL.filter(x => x.sym.toLowerCase().includes(s) || x.name.toLowerCase().includes(s)).slice(0, 7);
-    let html = hits.map(x => `<a href="#/app/trade/${x.sym}"><span class="tic">${x.logo ? `<img src="${x.logo}" alt="">` : `<span class="ph" data-mint="${x.mint}">${x.sym}</span>`}<span><b>${esc(x.name)}</b><small>${x.sym}</small></span></span><span class="pill">Trade</span></a>`).join('');
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q.value.trim())) html += `<a href="https://solscan.io/account/${q.value.trim()}" target="_blank" rel="noopener"><span>Open ${esc(short(q.value.trim()))} on Solscan</span>${ICON.ext}</a>`;
-    res.innerHTML = html || '<div class="empty2">No matches</div>'; res.classList.add('on');
+    const raw = q.value.trim(), s = raw.toLowerCase(); clearTimeout(sT); if (!s) { res.classList.remove('on'); return; }
+    const addr = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw), local = ALL.filter(x => x.sym.toLowerCase().includes(s) || x.name.toLowerCase().includes(s) || x.mint === raw).slice(0, 4);
+    const paint = (coins, busy) => {
+      let html = local.length ? '<h6>GTA stocks</h6>' + local.map(stockRow).join('') : '';
+      const C = (coins || []).filter(t => !ALL.some(x => x.mint === t.id)).slice(0, 8);
+      if (C.length) html += '<h6>Coins</h6>' + C.map(coinRow).join('');
+      else if (busy) html += '<div class="empty2">Searching every coin on Solana\u2026</div>';
+      if (!busy && addr && !local.length && !(coins || []).some(t => t.id === raw)) html += `<h6>Wallet</h6><a href="#/app/transfer/to/${raw}"><span class="tic"><span class="ph">${ICON.send}</span><span><b>Send money to ${esc(short(raw))}</b><small>This address is a wallet, not a coin</small></span></span></a>`;
+      res.innerHTML = html || '<div class="empty2">No coin or stock matches that.</div>'; res.classList.add('on');
+    };
+    paint(null, true);
+    const k = ++sN; sT = setTimeout(() => searchTokens(raw).then(L => { if (k === sN) paint(L, false); }).catch(() => { if (k === sN) paint([], false); }), 220);
   };
+  q.onkeydown = e => { if (e.key === 'Enter') { const a = res.querySelector('a'); if (a) { e.preventDefault(); location.hash = a.getAttribute('href'); q.value = ''; res.classList.remove('on'); q.blur(); } } else if (e.key === 'Escape') { res.classList.remove('on'); q.blur(); } };
   q.onblur = () => setTimeout(() => res.classList.remove('on'), 180);
   res.onclick = () => { q.value = ''; res.classList.remove('on'); };
   // clocks
@@ -172,11 +183,15 @@ function palette() {
   const items = [...NAV.flatMap(([h, l]) => l.map(([p, i, t]) => ({ t, sub: h, href: '#/app/' + p, i }))), ...ALL.map(x => ({ t: 'Trade ' + x.sym, sub: x.name, href: '#/app/trade/' + x.sym, i: 'chart' })),
     ...ALL.filter(x => x.gta).map(x => ({ t: 'Launch a coin priced in ' + x.sym, sub: 'Launchpad', href: '#/app/launch/' + x.sym, i: 'rocket' })), { t: 'Post an OTC offer', sub: 'OTC desk', href: '#/app/otc/new', i: 'desk' }, { t: 'Request money', sub: 'Transfers', href: '#/app/transfer/request', i: 'send' }];
   const v = document.createElement('div'); v.className = 'veil pal'; v.style.placeItems = 'start center'; v.style.paddingTop = '12vh';
-  v.innerHTML = `<div class="modal" style="width:min(620px,100%)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)"><span style="color:var(--mut);width:18px;height:18px">${ICON.search}</span><input class="inp" id="pq" placeholder="Search pages, stocks and actions" style="border:0;box-shadow:none;height:40px;padding:0"><span class="pill">Esc</span></div><div class="list" id="pl" style="max-height:52vh;overflow:auto"></div></div>`;
+  v.innerHTML = `<div class="modal" style="width:min(620px,100%)"><div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)"><span style="color:var(--mut);width:18px;height:18px">${ICON.search}</span><input class="inp" id="pq" placeholder="Search any coin, stock or page" style="border:0;box-shadow:none;height:40px;padding:0"><span class="pill">Esc</span></div><div class="list" id="pl" style="max-height:52vh;overflow:auto"></div></div>`;
   document.body.appendChild(v); const q = $('#pq', v), L = $('#pl', v); let sel = 0, hits = items;
-  const draw = () => { L.innerHTML = hits.slice(0, 40).map((x, k) => `<a class="it" href="${x.href}" data-k="${k}" style="color:inherit;text-decoration:none;${k === sel ? 'background:var(--bg2)' : ''}"><span class="tic"><span style="width:20px;height:20px;color:var(--navy3)">${ICON[x.i] || ''}</span><span><b>${esc(x.t)}</b><small>${esc(x.sub)}</small></span></span><span class="xs mut">\u21b5</span></a>`).join('') || '<div class="empty2">No matches</div>'; };
+  const draw = () => { L.innerHTML = hits.slice(0, 40).map((x, k) => `<a class="it" href="${x.href}" data-k="${k}" style="color:inherit;text-decoration:none;${k === sel ? 'background:var(--bg2)' : ''}"><span class="tic"><span style="width:20px;height:20px;color:var(--navy3)">${x.img ? `<img src="${esc(x.img)}" alt="" style="width:20px;height:20px;border-radius:50%">` : ICON[x.i] || ''}</span><span><b>${esc(x.t)}</b><small>${esc(x.sub)}</small></span></span><span class="xs mut">\u21b5</span></a>`).join('') || '<div class="empty2">No matches</div>'; };
   const close = () => v.remove();
-  q.oninput = () => { const s = q.value.trim().toLowerCase(); hits = !s ? items : items.filter(x => (x.t + ' ' + x.sub).toLowerCase().includes(s)); sel = 0; draw(); };
+  let pT = null, pN = 0;
+  q.oninput = () => { const raw = q.value.trim(), s = raw.toLowerCase(); hits = !s ? items : items.filter(x => (x.t + ' ' + x.sub).toLowerCase().includes(s)); sel = 0; draw(); clearTimeout(pT);
+    if (s.length < 2) return; const k = ++pN;
+    pT = setTimeout(() => searchTokens(raw).then(L => { if (k !== pN) return; const C = L.filter(t => !ALL.some(x => x.mint === t.id)).slice(0, 8).map(t => ({ t: '$' + (t.symbol || '?') + (t.name ? ' \u00b7 ' + t.name : ''), sub: 'Coin \u00b7 ' + usdp(t.usdPrice) + (t.mcap ? ' \u00b7 mcap ' + usd(t.mcap) : ''), href: '#/app/coins/' + t.id, img: t.icon, i: 'coins' }));
+      hits = hits.concat(C); draw(); }).catch(() => {}), 220); };
   q.onkeydown = e => { if (e.key === 'Escape') close(); if (e.key === 'ArrowDown') { sel = Math.min(hits.length - 1, sel + 1); draw(); e.preventDefault(); } if (e.key === 'ArrowUp') { sel = Math.max(0, sel - 1); draw(); e.preventDefault(); } if (e.key === 'Enter' && hits[sel]) { location.hash = hits[sel].href; close(); } };
   v.onclick = e => { if (e.target === v || e.target.closest('a')) close(); };
   draw(); q.focus();
@@ -223,3 +238,8 @@ export function demoGate() {
   v.addEventListener('click', e => { if (e.target === v || e.target.closest('.x') || e.target.closest('[data-k]')) close(); if (e.target.closest('[data-o]')) { close(); ctx.actions.leaveDemo(true); } });
   document.body.appendChild(v);
 }
+
+// search rows: a GTA stock opens its trade page, any other coin opens its coin page
+const stockRow = x => `<a href="#/app/trade/${x.sym}"><span class="tic">${x.logo ? `<img src="${x.logo}" alt="">` : `<span class="ph" data-mint="${x.mint}">${x.sym}</span>`}<span><b>${esc(x.name)}</b><small>${x.sym}</small></span></span><span class="pill">Trade</span></a>`;
+const coinRow = t => { const c = t.stats24h && t.stats24h.priceChange != null ? +t.stats24h.priceChange : null;
+  return `<a href="#/app/coins/${t.id}"><span class="tic">${t.icon ? `<img src="${esc(t.icon)}" alt="" loading="lazy">` : `<span class="ph">${esc(String(t.symbol || '?').slice(0, 4))}</span>`}<span><b>${esc(t.symbol || '?')}${t.isVerified ? `<i class="vf" title="Verified on Jupiter">${ICON.check}</i>` : ''}</b><small>${esc(t.name || '')}${t.mcap ? ' \u00b7 mcap ' + usd(t.mcap) : ''}</small></span></span><span style="text-align:right;white-space:nowrap"><b class="num">${usdp(t.usdPrice)}</b><small class="num ${tone(c)}" style="display:block">${c != null ? pct(c) : ''}</small></span></a>`; };

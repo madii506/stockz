@@ -369,3 +369,19 @@ html[data-theme=dark] .chip.on{background:#2f5fe0;border-color:#2f5fe0}
 .prefs .it{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px}.prefs .seg{flex:none}
 body.notape .tape{display:none}body.notape .app{grid-template-rows:64px 0 1fr}body.notape .side{top:64px;height:calc(100vh - 64px)}
 @media (max-width:860px){body.notape .app{grid-template-rows:60px 1fr}}
+
+/* search: sections, verified ticks */
+.atop .srch .res h6{margin:8px 10px 4px;font:700 11px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.atop .srch .res .tic img,.atop .srch .res .tic .ph{width:30px;height:30px;border-radius:50%;flex:none}.atop .srch .res .tic{display:flex;align-items:center;gap:10px;min-width:0}
+.atop .srch .res .tic small{display:block;color:var(--mut);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px}
+.vf{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#2f5fe0;color:#fff;margin-left:5px;vertical-align:-2px}.vf svg{width:10px;height:10px}
+.atop .srch .res{max-height:min(520px,70vh)}
+.atop .msrch{display:none}@media (max-width:860px){.atop .msrch{display:grid}}@media (max-width:430px){.atop #thm{display:none}}
+
+/* the coin page */
+.checks .it{display:flex;gap:12px;align-items:flex-start}.ck{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;font:800 13px Inter,sans-serif;margin-top:2px}
+.ck.g{background:var(--upbg);color:var(--up)}.ck.w{background:var(--warnbg);color:var(--warn)}.ck svg{width:14px;height:14px}
+.ticket .inrow .unit{font-weight:700;color:var(--ink2);padding:0 6px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.qhead{flex-wrap:wrap}
+.checks .it{justify-content:flex-start}.checks .it>span{text-align:left}
+.cfab{display:none}@media (max-width:860px){.cfab{display:inline-flex;position:fixed;left:50%;bottom:78px;transform:translateX(-50%);z-index:50;box-shadow:0 12px 30px rgba(0,0,0,.35);transition:opacity .2s}.cfab.hide{opacity:0;pointer-events:none}}
