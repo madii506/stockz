@@ -13,7 +13,10 @@ export function spark(cv, ys, color) {
   ys.forEach((y, i) => { const X = i / (ys.length - 1) * (w - 2) + 1, Y = h - 3 - (y - lo) / sp * (h - 6); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
   g.strokeStyle = color || (up ? css('--up') : css('--dn')); g.lineWidth = color ? 2 : 1.6; g.lineJoin = 'round'; g.stroke();
 }
-const fmt = v => v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v.toPrecision(3);
+// axis prices: tiny coin prices use the subscript form (0.0\u20852363 = 0.000002363) so they fit the axis
+const SUBS = '\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089';
+const fmt = v => v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v >= .001 || v <= 0 ? (+v.toPrecision(3)).toString()
+  : (() => { const z = -Math.floor(Math.log10(v)) - 1, sig = (v * 10 ** (z + 1)).toFixed(2).replace('.', '').replace(/0+$/, ''); return '0.0' + String(z).split('').map(d => SUBS[+d]).join('') + sig; })();
 // area chart of candle closes; returns a redraw function for resizes
 export function area(cv, data, opt = {}) {
   if (!cv) return () => {};
