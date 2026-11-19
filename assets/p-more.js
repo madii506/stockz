@@ -24,13 +24,14 @@ export async function transfer(main, ctx, rest) {
   if (rest[0] === 'request') return request(main, ctx);
   main.innerHTML = `<div class="ph1"><div><h1>Transfers</h1><p>Send SOL, stablecoins, stocks or any token to another wallet. Like a wire, but it lands in seconds.</p></div></div>${TT('send')}
     <div class="cols"><div class="panel"><header><h2>Send money</h2></header><div class="pad">
-      <label class="fld"><span>From account ${esc(mask(ctx.S.address))}</span><select class="inp" id="as"><option>Loading your balances…</option></select></label>
+      <label class="fld"><span>From account ${ctx.S.demo ? 'Demo' : esc(mask(ctx.S.address))}</span><select class="inp" id="as"><option>Loading your balances…</option></select></label>
       <label class="fld"><span>To (wallet address)</span><input class="inp mono" id="to" placeholder="Recipient's Solana address" autocomplete="off" spellcheck="false"></label>
       <label class="fld"><span>Amount</span><div style="display:flex;gap:8px"><input class="inp num" id="am" inputmode="decimal" placeholder="0.00"><button class="btn ghost" id="max" type="button">Max</button></div></label>
       <label class="fld"><span>Note (optional, public on chain)</span><input class="inp" id="nt" maxlength="80" placeholder="e.g. rent, lunch, OTC settlement"></label>
       <div class="note w" style="margin-bottom:14px">${ICON.shield}<span>Transfers can’t be reversed. Check the address twice: STOCKZ can’t recover funds sent to the wrong wallet.</span></div>
       <button class="btn pri wide lg" id="rv">Review transfer</button></div></div>
-      <div class="stack"><div class="panel"><header><h2>Recent recipients</h2></header><div class="list" id="rr"></div></div></div></div>`;
+      <div class="stack"><div class="panel"><header><h2>Payees</h2><button class="btn ghost sm" id="pa">${ICON.plus || '+'} Add</button></header><div class="pad" id="pf" hidden><label class="fld"><span>Name</span><input class="inp" id="pn" maxlength="32" placeholder="e.g. Alex, landlord, my Ledger"></label><label class="fld"><span>Solana address</span><input class="inp mono" id="pd" spellcheck="false" autocomplete="off"></label><button class="btn pri sm" id="ps2">Save payee</button></div><div class="list" id="pl"></div></div>
+      <div class="panel"><header><h2>Recent recipients</h2></header><div class="list" id="rr"></div></div></div></div>`;
   const H = await ctx.hold(false).catch(() => null);
   const assets = H ? [{ sym: 'SOL', name: 'Solana', mint: SOL, ui: Math.max(0, H.sol - .002), dec: 9, prog: null, usd: H.solUsd }, ...H.cash, ...H.stocks, ...H.other].filter(a => a.ui > 0) : [];
   const sel = $('#as', main);
@@ -38,7 +39,18 @@ export async function transfer(main, ctx, rest) {
   if (rest[0]) { const i = assets.findIndex(a => a.mint === rest[0]); if (i >= 0) sel.value = i; }
   const recent = store.get('recips:' + ctx.S.address, []);
   $('#rr', main).innerHTML = recent.length ? recent.map(r => `<a class="it" href="#" data-a="${esc(r)}" style="color:inherit;text-decoration:none"><span class="mono">${esc(short(r))}</span><span class="pill">Use</span></a>`).join('') : '<div class="empty2">No transfers from this device yet.</div>';
-  $$('#rr [data-a]', main).forEach(a => a.onclick = e => { e.preventDefault(); $('#to', main).value = a.dataset.a; });
+  $$('#rr [data-a]', main).forEach(a => a.onclick = e => { e.preventDefault(); $('#to', main).value = a.dataset.a; who(); });
+  // payees: names for the addresses you pay, kept in this browser
+  const PK = 'payees:' + ctx.S.address, payees = () => store.get(PK, []);
+  const who = () => { const p = payees().find(x => x.addr === $('#to', main).value.trim()), l = $('#to', main).closest('.fld').querySelector('span'); l.textContent = p ? `To ${p.name}` : 'To (wallet address)'; };
+  const drawP = () => { const L = payees(); $('#pl', main).innerHTML = L.length ? L.map((p, i) => `<div class="it"><span><b>${esc(p.name)}</b><small class="mut mono" style="display:block">${esc(short(p.addr))}</small></span><span style="display:flex;gap:6px"><button class="btn ghost sm" data-pay="${i}">Pay</button><button class="btn ghost sm" data-del="${i}" aria-label="Remove ${esc(p.name)}">${ICON.close}</button></span></div>`).join('') : '<div class="empty2">Save the addresses you pay often, with a name.</div>';
+    $$('[data-pay]', main).forEach(b => b.onclick = () => { $('#to', main).value = payees()[+b.dataset.pay].addr; who(); $('#am', main).focus(); });
+    $$('[data-del]', main).forEach(b => b.onclick = () => { const L2 = payees(); L2.splice(+b.dataset.del, 1); store.set(PK, L2); drawP(); }); };
+  $('#pa', main).onclick = () => { const f = $('#pf', main); f.hidden = !f.hidden; if (!f.hidden) { $('#pd', main).value = $('#to', main).value.trim(); $('#pn', main).focus(); } };
+  $('#ps2', main).onclick = () => { const name = $('#pn', main).value.trim(), addr = $('#pd', main).value.trim();
+    if (!name) return toast('Give the payee a name.', 'err'); if (!isAddr(addr)) return toast('That is not a Solana address.', 'err');
+    store.set(PK, [{ name, addr }, ...payees().filter(p => p.addr !== addr)].slice(0, 30)); $('#pf', main).hidden = true; $('#pn', main).value = ''; drawP(); who(); toast(`${esc(name)} saved`, 'ok', 2000); };
+  $('#to', main).oninput = who; drawP();
   $('#max', main).onclick = () => { const a = assets[+sel.value]; if (a) $('#am', main).value = +a.ui.toFixed(Math.min(6, a.dec ?? 6)); };
   $('#rv', main).onclick = () => {
     const a = assets[+sel.value], to = $('#to', main).value.trim(), v = parseFloat($('#am', main).value), note = $('#nt', main).value.trim();
@@ -46,7 +58,7 @@ export async function transfer(main, ctx, rest) {
     if (to === ctx.S.address) return toast('That is your own address.', 'err'); if (!(v > 0) || v > a.ui + 1e-12) return toast('Enter an amount you hold.', 'err');
     const m = document.createElement('div'); m.className = 'veil';
     m.innerHTML = `<div class="modal"><header><h3>Review transfer</h3><button class="x" data-c>${ICON.close}</button></header><div class="body">
-      <dl class="kv"><dt>Send</dt><dd>${num(v)} ${esc(a.sym)}</dd><dt>From</dt><dd class="mono">${esc(short(ctx.S.address))}</dd><dt>To</dt><dd class="mono" style="word-break:break-all;white-space:normal">${esc(to)}</dd>${note ? `<dt>Note</dt><dd>${esc(note)}</dd>` : ''}<dt>Network fee</dt><dd>about 0.000005 SOL${a.mint !== SOL ? ', plus about 0.002 SOL if they have no account for it yet' : ''}</dd></dl>
+      <dl class="kv"><dt>Send</dt><dd>${num(v)} ${esc(a.sym)}</dd><dt>From</dt><dd class="mono">${esc(short(ctx.S.address))}</dd><dt>To</dt><dd class="mono" style="word-break:break-all;white-space:normal">${(store.get('payees:' + ctx.S.address, []).find(p => p.addr === to) || {}).name ? `<b style="font-family:Inter,sans-serif">${esc(store.get('payees:' + ctx.S.address, []).find(p => p.addr === to).name)}</b><br>` : ''}${esc(to)}</dd>${note ? `<dt>Note</dt><dd>${esc(note)}</dd>` : ''}<dt>Network fee</dt><dd>about 0.000005 SOL${a.mint !== SOL ? ', plus about 0.002 SOL if they have no account for it yet' : ''}</dd></dl>
       <div id="ps" class="prog" style="margin-top:14px"></div></div><footer><button class="btn ghost" data-c>Cancel</button><button class="btn pri" id="sd">Send now</button></footer></div>`;
     document.body.appendChild(m); $$('[data-c]', m).forEach(b => b.onclick = () => m.remove());
     $('#sd', m).onclick = async () => {
@@ -82,6 +94,7 @@ let qrp = null;
 const qrlib = () => window.qrcode ? Promise.resolve(window.qrcode) : qrp || (qrp = new Promise((ok, no) => { const s = document.createElement('script'); s.src = '/assets/qrcode.min.js'; s.onload = () => ok(window.qrcode); s.onerror = () => no(new Error('QR code library failed to load')); document.head.appendChild(s); }));
 // request money: a Solana Pay link and its QR code. Any Solana wallet that scans it fills in the payment to you.
 async function request(main, ctx) {
+  if (ctx.S && ctx.S.demo) { main.innerHTML = `<div class="ph1"><div><h1>Transfers</h1><p>Ask anyone to pay you with a Solana Pay code.</p></div></div>${TT('request')}<div class="panel"><div class="pad" style="text-align:center;padding:40px 20px"><h2 style="margin:0 0 6px;color:var(--head)">Your payment code needs your own account</h2><p class="mut" style="margin:0 0 18px">In demo mode there is no address to be paid at, so no code is made. Open an account and your code points straight at your wallet.</p><button class="btn pri" id="dgo">Open an account</button></div></div>`; const b = $('#dgo', main); if (b) b.onclick = () => ctx.actions.leaveDemo(true); return; }
   const A = [{ sym: 'SOL', mint: SOL, name: 'Solana' }, { sym: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', name: 'USD Coin' }, ...BASKET];
   main.innerHTML = `<div class="ph1"><div><h1>Transfers</h1><p>Ask anyone to pay you. They scan the code with any Solana wallet, and the payment comes straight to your account.</p></div></div>${TT('request')}
     <div class="cols"><div class="panel"><header><h2>Request money</h2></header><div class="pad">
@@ -109,14 +122,14 @@ export async function security(main, ctx) {
   const S = ctx.S;
   main.innerHTML = `<div class="ph1"><div><h1>Security center</h1><p>How STOCKZ keeps your account safe, and what you can check yourself.</p></div></div>
     <div class="cols"><div class="stack">
-      <div class="panel"><header><h2>This session</h2>${S ? '<button class="btn ghost sm" id="so">Sign out</button>' : ''}</header><div class="pad">${S ? `<dl class="kv"><dt>Account</dt><dd>${esc(mask(S.address))}</dd><dt>Wallet</dt><dd>${esc(S.wallet)}</dd><dt>Address</dt><dd class="mono"><a href="#" id="cp">${esc(short(S.address))} ⧉</a></dd><dt>Signed in</dt><dd>${esc(new Date(S.at).toLocaleString())}</dd><dt>Sign-in message</dt><dd>${S.signed ? 'Signed by your wallet' : 'Your wallet has no message signing; connected only'}</dd><dt>Session ends</dt><dd>When you close this tab or sign out</dd></dl>` : '<span class="mut">You are browsing as a guest.</span>'}</div></div>
+      <div class="panel"><header><h2>This session</h2>${S ? `<button class="btn ghost sm" id="so">${S.demo ? 'Leave demo mode' : 'Sign out'}</button>` : ''}</header><div class="pad">${S && S.demo ? '<dl class="kv"><dt>Account</dt><dd>Demo account</dd><dt>Balances</dt><dd>Sample, priced live</dd><dt>Can it sign?</dt><dd>No. Nothing in demo mode moves money.</dd></dl>' : S ? `<dl class="kv"><dt>Account</dt><dd>${esc(mask(S.address))}</dd><dt>Wallet</dt><dd>${esc(S.wallet)}</dd><dt>Address</dt><dd class="mono"><a href="#" id="cp">${esc(short(S.address))} ⧉</a></dd><dt>Signed in</dt><dd>${esc(new Date(S.at).toLocaleString())}</dd><dt>Sign-in message</dt><dd>${S.signed ? 'Signed by your wallet' : 'Your wallet has no message signing; connected only'}</dd><dt>Session ends</dt><dd>When you close this tab or sign out</dd></dl>` : '<span class="mut">You are browsing as a guest.</span>'}</div></div>
       <div class="panel"><header><h2>Token approvals</h2><span class="sm mut">wallets you allowed to move your tokens</span></header><div class="list" id="dl">${S ? '<div class="empty2">Scanning your token accounts…</div>' : '<div class="empty2">Sign in to check your approvals.</div>'}</div></div>
       <div class="panel"><header><h2>Issuer controls on the GTA VI basket</h2></header><div class="flush"><table class="tbl"><thead><tr><th>Stock</th><th>Program</th><th>What the issuer can do</th></tr></thead><tbody id="ic">${BASKET.map(s => `<tr data-m="${s.mint}"><td><b>${s.sym}</b> <span class="mut sm">${esc(s.issuer)}</span></td><td class="pg mut sm">—</td><td class="fl"><span class="skel">loading</span></td></tr>`).join('')}</tbody></table></div></div>
     </div><div class="stack">
       <div class="panel"><header><h2>How we protect you</h2></header><div class="list">${[['lock', 'No passwords', 'You sign in by signing a message. There is no password to phish or leak.'], ['wallet', 'No custody', 'STOCKZ never holds funds or keys, and can’t move anything without your signature.'], ['check', 'Dry runs', 'Launches and transfers are simulated before your wallet sees them.'], ['shield', 'Plain receipts', 'Every action links to its transaction on Solscan.']].map(([i, t, d]) => `<div class="it" style="align-items:flex-start;justify-content:flex-start;gap:12px"><span style="color:var(--up);width:22px;height:22px">${ICON[i]}</span><span><b>${t}</b><small class="mut" style="display:block">${d}</small></span></div>`).join('')}</div></div>
       <div class="panel"><header><h2>Your checklist</h2></header><div class="pad sm"><ol style="margin:0;padding-left:18px;display:grid;gap:8px"><li>Never type your seed phrase into any website, STOCKZ included. We will never ask for it.</li><li>Read every transaction in your wallet before you approve it.</li><li>Bookmark the real STOCKZ address and use the bookmark.</li><li>Use a separate wallet for launches and new coins.</li></ol></div></div>
       <div class="panel"><header><h2>Data on this device</h2></header><div class="pad"><p class="sm mut" style="margin-top:0">Your watchlist, alerts and receipts are kept in this browser only. Nothing is sent to a STOCKZ server.</p><button class="btn ghost sm" id="clr">Clear STOCKZ data on this device</button></div></div></div></div>`;
-  if (S) { $('#so', main).onclick = () => ctx.actions.signOut(); $('#cp', main).onclick = e => { e.preventDefault(); copy(S.address); }; }
+  if (S) { $('#so', main).onclick = () => ctx.actions.signOut(); const cp = $('#cp', main); if (cp) cp.onclick = e => { e.preventDefault(); copy(S.address); }; }
   $('#clr', main).onclick = () => { try { Object.keys(localStorage).filter(k => k.startsWith('stockz:')).forEach(k => localStorage.removeItem(k)); } catch {} toast('Cleared', 'ok'); };
   if (S) ctx.hold(true).then(h => { const all = [...h.cash, ...h.stocks, ...h.other].filter(r => r.delegate), box = $('#dl', main); if (!box) return;
     box.innerHTML = all.length ? all.map((r, i) => `<div class="it"><span><b>${esc(r.sym)}</b> <span class="pill w">approved</span><small class="mut" style="display:block">${esc(short(r.delegate))} can move up to ${num(r.delegated)} ${esc(r.sym)}</small></span><button class="btn ghost sm" data-rv="${i}">Revoke</button></div>`).join('') : '<div class="empty2">No approvals. No other wallet can move your tokens.</div>';
@@ -141,4 +154,24 @@ export async function help(main) {
     <div class="stack"><div class="panel"><header><h2>Glossary</h2></header><div class="pad sm"><dl class="kv" style="grid-template-columns:auto 1fr;text-align:left">${[['Mint', 'A token’s address'], ['Quote', 'What a coin is priced in'], ['Curve', 'pump.fun’s price formula before a pool'], ['Slippage', 'How far the price may move before your order lands'], ['Nonce', 'A one-time number that makes a signed OTC ticket single-use']].map(([k, v]) => `<dt>${k}</dt><dd style="text-align:left;font-weight:500">${v}</dd>`).join('')}</dl></div></div>
       <div class="panel"><header><h2>Disclosures</h2></header><div class="pad xs mut" style="line-height:1.6"><p style="margin-top:0">STOCKZ is not a bank, a broker or an investment adviser, and nothing here is financial advice. STOCKZ never holds your funds or keys: every transaction is built for your wallet, shown to you and signed by you.</p><p>Tokenized stocks are tokens issued by third parties (xStocks by Backed; Backpack) that track a share price. They are not shares registered in your name, may not be available where you live, and their issuers can pause, freeze or move them. Memecoins and tokenized stocks are volatile and you can lose everything you put in.</p><p style="margin-bottom:0">STOCKZ is independent and not affiliated with, endorsed by or connected to Rockstar Games, Take-Two Interactive, Microsoft, AMD, GameStop, Nvidia, Backed, Backpack, pump.fun or Jupiter. All trademarks belong to their owners.</p></div></div>
       <div class="panel"><header><h2>Still stuck?</h2></header><div class="pad sm">Every receipt links to Solscan, where you can see exactly what happened. For anything else, reach STOCKZ on X.</div></div></div></div>`;
+}
+
+// preferences: how STOCKZ looks and behaves on this device. Everything here stays in this browser.
+export async function prefs(main, ctx) {
+  const { theme } = await import('./core.js');
+  const P = [
+    ['theme', 'Look', 'Night or day', [['dark', 'Night'], ['light', 'Day']], () => theme.get(), v => { theme.set(v); const b = $('#thm'); if (b) b.innerHTML = v === 'dark' ? ICON.sun : ICON.moon; }],
+    ['privacy', 'Hide balances', 'Blur every amount until you tap the eye in the top bar', [[true, 'On'], [false, 'Off']], () => !!store.get('privacy'), v => { store.set('privacy', v); document.body.classList.toggle('privacy', v); const e = $('#eye'); if (e) e.style.background = v ? 'rgba(232,36,122,.5)' : ''; }],
+    ['pay', 'Pay with', 'What the order ticket spends first', [['SOL', 'SOL'], ['USDC', 'USDC']], () => store.get('pay') || 'SOL', v => store.set('pay', v)],
+    ['tape', 'Price tape', 'The live ticker under the top bar', [[true, 'Show'], [false, 'Hide']], () => store.get('tape') !== false, v => { store.set('tape', v); document.body.classList.toggle('notape', !v); }],
+    ['still', 'Motion', 'The moving lobby, page transitions and number count-ups', [[false, 'Full'], [true, 'Calm']], () => store.get('still') === true, v => store.set('still', v)],
+  ];
+  main.innerHTML = `<div class="ph1"><div><h1>Preferences</h1><p>How STOCKZ looks and behaves on this device. Nothing here leaves your browser.</p></div></div>
+    <div class="cols"><div class="panel"><div class="list prefs">${P.map(([k, t, d, opts]) => `<div class="it"><span><b>${t}</b><small class="mut" style="display:block">${d}</small></span><span class="seg" data-k="${k}">${opts.map(([v, l]) => `<button data-v="${String(v)}">${l}</button>`).join('')}</span></div>`).join('')}
+      <div class="it"><span><b>The opening</b><small class="mut" style="display:block">Watch the lobby's lights come on again next time you open STOCKZ</small></span><button class="btn ghost sm" id="rp">Replay it</button></div></div></div>
+      <div class="stack"><div class="panel"><header><h2>Keyboard</h2></header><div class="pad"><div class="keys">${[['/', 'Search'], ['B', 'Buy'], ['S', 'Sell'], ['T', 'Trade'], ['M', 'Markets'], ['O', 'Overview'], ['Ctrl K', 'Jump anywhere'], ['?', 'All shortcuts']].map(([a, b]) => `<div><kbd>${a}</kbd><span>${b}</span></div>`).join('')}</div></div></div></div></div>`;
+  const paint = () => P.forEach(([k, , , opts, get]) => { const cur = String(get()); $$(`.seg[data-k="${k}"] button`, main).forEach(b => b.classList.toggle('on', b.dataset.v === cur)); });
+  P.forEach(([k, , , opts, get, set]) => $$(`.seg[data-k="${k}"] button`, main).forEach(b => b.onclick = () => { const o = opts.find(([v]) => String(v) === b.dataset.v); set(o[0]); paint(); toast('Saved', 'ok', 1600); }));
+  $('#rp', main).onclick = () => { try { sessionStorage.removeItem('stockz:intro'); } catch {} toast('The opening plays next time you open the start screen.', 'ok', 3000); };
+  paint();
 }

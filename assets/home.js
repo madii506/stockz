@@ -4,7 +4,7 @@
 // A first visit opens in the dark and the lights come on; signing in dives into the screen on the counter.
 import { $, $$, esc, ICON, EMBLEM, store, sess, toast, reduced } from './core.js';
 import { W, connect, signMessage } from './wallet.js';
-import { lobbyGL, FOCUS } from './lobbygl.js';
+import { lobbyGL, FOCUS, rigs } from './lobbygl.js';
 
 const IW = 1584, IH = 672;                       // the photo's size: every overlay below is placed in these pixels
 const SCREENS = [                                 // the wall monitors and the counter monitor (d = depth, matching the depth map)
@@ -36,7 +36,8 @@ export function renderHome(root, opts = {}) {
       <canvas class="ov walk" id="walk" data-d=".06" style="${pct(1096, 330, 400, 120)}"></canvas>
     </div></div><div class="shade"></div>
     <div class="front"><h1 class="hname" aria-label="STOCKZ">${'STOCKZ'.split('').map((c, i) => `<span style="--d:${i * 70}ms">${c}</span>`).join('')}</h1>
-      <div class="hbtns"><button class="btn pink lg" id="hsign">${ICON.lock} Sign in</button><button class="btn glass lg" id="hopen">Open an account</button></div></div></div>`;
+      <div class="hbtns"><button class="btn pink lg" id="hsign">${ICON.lock} Sign in</button><button class="btn glass lg" id="hopen">Open an account</button></div>
+      <button class="hdemo" id="hdemo">${ICON.eye}<span>Demo mode</span><small>look around, no account needed</small></button></div></div>`;
   const live = $('#live', root), cam = $('#cam', root), stage = $('#stage', root), glc = $('#gl', root);
   const S = { gl: null, w: 1, h: 1, q: 1, intro: play ? Infinity : -1 };   // intro: the time it started (Infinity = waiting for the photo)
   // the photo covers the screen, framed on the wall, the counter and the screens
@@ -61,7 +62,7 @@ export function renderHome(root, opts = {}) {
   place($('#clk', root), CLOCK.x - CLOCK.r, CLOCK.y - CLOCK.r, CLOCK.r * 2, CLOCK.r * 2);
   layout(); addEventListener('resize', layout);
   const begin = () => { if (play && S.intro === Infinity) { S.intro = performance.now(); sess.set('intro', 1); } };
-  lobbyGL(glc, { photo: '/assets/img/lobby-1584.jpg', map: '/assets/img/lobby-map.png?v=1', mot: '/assets/img/lobby-mot.png?v=1' })
+  lobbyGL(glc, { photo: '/assets/img/lobby-1584.jpg', map: '/assets/img/lobby-map.png?v=2', mot: '/assets/img/lobby-mot.png?v=2', mot2: '/assets/img/lobby-mot2.png?v=2', mot3: '/assets/img/lobby-mot3.png?v=2', mot4: '/assets/img/lobby-mot4.png?v=2' })
     .then(g => { if (!document.body.contains(glc)) return; S.gl = g; layout(); live.classList.add('gl-on'); glc.addEventListener('gl-lost', () => { S.gl = null; live.classList.remove('gl-on'); }); begin(); })
     .catch(err => { console.warn('STOCKZ lobby: flat photo (' + (err && err.message || err) + ')'); glc.remove(); live.classList.remove('intro'); begin(); S.intro = -1; finish(live); });
   // any key or tap skips the opening
@@ -69,6 +70,7 @@ export function renderHome(root, opts = {}) {
   live.addEventListener('pointerdown', skip); addEventListener('keydown', skip, { once: true });
   $('#hsign', root).onclick = () => openSignIn(opts);
   $('#hopen', root).onclick = () => openAccountModal();
+  $('#hdemo', root).onclick = () => opts.onDemo && opts.onDemo();
   if (location.hash === '#/signin') openSignIn(opts);
   animate(root, live, cam, stage, S);
 }
@@ -121,7 +123,7 @@ function animate(root, live, cam, stage, S) {
         CAM.ox = -cx * .010 + (x - PAN.a) / Math.max(1, S.w) * .04; CAM.oy = -cy * .007 + Math.sin(t / 23) * .0016 + .008 * (1 - ease); }
       else { stage.style.transform = `translate3d(${PAN.mid}px,0,0)`; CAM.ox = CAM.oy = 0; }
     }
-    if (S.gl) { S.gl.draw({ ox: CAM.ox, oy: CAM.oy, t: still ? 0 : t, e: done ? 1 : e, l: done ? 1 : l });
+    if (S.gl) { S.gl.draw({ ox: CAM.ox, oy: CAM.oy, t: still ? 0 : t, e: done ? 1 : e, l: done ? 1 : l, r: still ? null : rigs(t) });
       for (const o of ovs) o.el.style.transform = `translate3d(${(CAM.ox * (o.d - FOCUS) * S.w).toFixed(2)}px,${(CAM.oy * (o.d - FOCUS) * S.h).toFixed(2)}px,0)`; }
     // the LED band: arrows scroll right to left; in the opening it boots from the right with a stutter
     shift += dt * 26;
@@ -168,14 +170,25 @@ function drawCar(g, k, base, sx = 1) {
   g.filter = 'none';
 }
 function person(g, x, foot, h, ph, dir, tone, bag, sx = 1) {
-  const c = `rgba(${tone},${tone},${tone + 12},.46)`, sw = Math.sin(ph), bob = Math.abs(Math.cos(ph)) * h * .012, hip = foot - h * .47 - bob, sh = foot - h * .80 - bob, hd = h * .075;
-  g.filter = `blur(${(2.3 * sx).toFixed(1)}px)`; g.strokeStyle = c; g.fillStyle = c; g.lineCap = 'round';
-  g.lineWidth = h * .088; for (const k of [1, -1]) { g.beginPath(); g.moveTo(x, hip); g.lineTo(x + k * sw * h * .13, foot - h * .02); g.stroke(); }
-  g.lineWidth = h * .066; for (const k of [1, -1]) { g.beginPath(); g.moveTo(x, sh + h * .03); g.lineTo(x - k * sw * h * .1, hip - h * .02); g.stroke(); }
-  g.beginPath(); g.ellipse(x, (hip + sh) / 2, h * .108, (hip - sh) / 2 + h * .035, 0, 0, 6.283); g.fill();
-  g.beginPath(); g.arc(x + dir * h * .01, sh - hd * 1.25, hd, 0, 6.283); g.fill();
-  if (bag) { g.fillRect(x - dir * h * .13, hip - h * .1, h * .07, h * .12); }
-  g.filter = 'none';
+  // a person walking past the glass: soft and backlit, with a real gait (legs and arms swing in opposite pairs, the body bobs)
+  const sw = Math.sin(ph), bob = Math.abs(Math.cos(ph)) * h * .014, hip = foot - h * .49 - bob, sh = foot - h * .815 - bob;
+  const col = a => `rgba(${tone | 0},${(tone + 4) | 0},${(tone + 14) | 0},${a})`;
+  g.save(); g.filter = `blur(${(2.4 * sx).toFixed(1)}px)`; g.lineCap = 'round'; g.lineJoin = 'round';
+  const limb = (x0, y0, ang, len, w0, w1, bend, a) => { const kx = x0 + Math.sin(ang) * len * .5, ky = y0 + Math.cos(ang) * len * .5,
+      ex = kx + Math.sin(ang + bend) * len * .5, ey = ky + Math.cos(ang + bend) * len * .5;
+    g.strokeStyle = col(a); g.lineWidth = w0; g.beginPath(); g.moveTo(x0, y0); g.lineTo(kx, ky); g.stroke(); g.lineWidth = w1; g.beginPath(); g.moveTo(kx, ky); g.lineTo(ex, ey); g.stroke(); };
+  const L = h * .47, A = h * .36, s1 = sw * .42, k = Math.max(0, -sw);
+  limb(x, hip, -s1, L, h * .085, h * .065, s1 > 0 ? .25 : .05, .30);            // far leg
+  limb(x, sh + h * .02, s1 * .8, A, h * .058, h * .048, -.2, .28);              // far arm
+  g.fillStyle = col(.40); g.beginPath();                                          // torso: shoulders down to the hips
+  g.moveTo(x - h * .11, sh + h * .015); g.quadraticCurveTo(x, sh - h * .02, x + h * .11, sh + h * .015);
+  g.lineTo(x + h * .085, hip + h * .02); g.lineTo(x - h * .085, hip + h * .02); g.closePath(); g.fill();
+  g.beginPath(); g.ellipse(x, sh - h * .045, h * .032, h * .03, 0, 0, 6.283); g.fill();                     // neck
+  g.beginPath(); g.ellipse(x + dir * h * .008, sh - h * .1, h * .052, h * .064, 0, 0, 6.283); g.fill();     // head
+  limb(x, hip, s1, L, h * .088, h * .068, .1 + k * .3, .40);                     // near leg
+  limb(x, sh + h * .02, -s1 * .8, A, h * .06, h * .05, -.25, .38);              // near arm
+  if (bag) { g.fillStyle = col(.36); g.beginPath(); g.roundRect(x - dir * h * .16, hip - h * .12, h * .08, h * .13, h * .015); g.fill(); }
+  g.restore();
 }
 function drawArrow(g, x, y, up, ph) {
   const c = up ? '#2dff8a' : '#ff3b5c'; g.save(); g.translate(x, y); g.shadowColor = c; g.shadowBlur = 6; g.fillStyle = c; g.beginPath();

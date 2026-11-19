@@ -37,6 +37,9 @@ export const store = {
   set(k, v) { try { localStorage.setItem('stockz:' + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem('stockz:' + k); } catch {} },
 };
+// demo mode: a read-only account with sample balances at live prices. Its address is only an internal key: it is never shown or paid to.
+export const DEMO = 'dE7LBXThTU7BBE6Mxbtzg3UVCUZ9d6TKLUsCESWLAvL';
+export const isDemo = S => !!(S && S.demo);
 export const sess = {
   get(k, d = null) { try { const v = sessionStorage.getItem('stockz:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { sessionStorage.setItem('stockz:' + k, JSON.stringify(v)); } catch {} },
@@ -49,7 +52,7 @@ export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const short = a => a ? a.slice(0, 4) + '…' + a.slice(-4) : '';
 export const mask = a => a ? '••••' + a.slice(-4) : '••••';
 export const ok = v => v != null && isFinite(v);
-export const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+export const reduced = () => { try { return localStorage.getItem('stockz:still') === 'true' || matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 export function usd(v, d) {
   if (!ok(v)) return '—';
   const a = Math.abs(v), sg = v < 0 ? '-' : '';
@@ -72,7 +75,7 @@ export const solscan = (x, kind = 'tx') => `https://solscan.io/${kind}/${x}`;
 export const ago = t => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? Math.floor(s) + 's ago' : s < 3600 ? Math.floor(s / 60) + 'm ago' : s < 86400 ? Math.floor(s / 3600) + 'h ago' : Math.floor(s / 86400) + 'd ago'; };
 export const when = t => new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 export function toast(msg, kind = '', ms = 5000) {
-  const box = $('#toasts'); if (!box) return;
+  const box = $('#toasts'); if (!box || !msg) return;
   const t = document.createElement('div'); t.className = 'toast ' + kind; t.innerHTML = msg; box.appendChild(t);
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, ms);
 }
@@ -114,6 +117,7 @@ export const ICON = {
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5H6.5A1.5 1.5 0 005 6v12a1.5 1.5 0 001.5 1.5H14M10.5 12H20m-3.5-3.5L20 12l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   desk: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5h17v3h-17zM5.5 12.5V20M18.5 12.5V20M8 9.5V6.5a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   pie: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5H12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M15 3.9A8.5 8.5 0 0 1 20.1 9H15z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   coins: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="9" cy="7" rx="5.5" ry="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 7v4.5c0 1.4 2.5 2.6 5.5 2.6M3.5 11.5V16c0 1.4 2.5 2.6 5.5 2.6M14.5 7v2" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="15" cy="13.5" rx="5.5" ry="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 13.5V18c0 1.4 2.5 2.6 5.5 2.6s5.5-1.2 5.5-2.6v-4.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
 };

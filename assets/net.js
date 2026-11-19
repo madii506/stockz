@@ -1,5 +1,5 @@
 // STOCKZ · the network: Solana through our relay (/api/rpc), prices and trades through Jupiter, candles from GeckoTerminal
-import { SOL, USDC, USDT, ALL, byMint, CONFIG } from './core.js';
+import { SOL, USDC, USDT, ALL, byMint, CONFIG, DEMO } from './core.js';
 let id = 0;
 export async function rpc(method, params = [], ms = 25000) {
   const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
@@ -37,7 +37,7 @@ export const price = t => t && t.usdPrice != null ? +t.usdPrice : null;
 export const chg24 = t => t && t.stats24h && t.stats24h.priceChange != null ? +t.stats24h.priceChange : null;
 export const vol24 = t => t && t.stats24h ? (+t.stats24h.buyVolume || 0) + (+t.stats24h.sellVolume || 0) : null;
 // a quote and a signed swap through Jupiter Ultra: Jupiter builds it, your wallet signs it, Jupiter lands it
-export const order = p => j(`${JUP}/ultra/v1/order?` + new URLSearchParams(p).toString());
+export const order = p => { const q = { ...p }; if (q.taker === DEMO) delete q.taker; return j(`${JUP}/ultra/v1/order?` + new URLSearchParams(q).toString()); };
 export const execute = (signedTransaction, requestId) => j(`${JUP}/ultra/v1/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signedTransaction, requestId }) }, 60000);
 // candles: the token's deepest pool on GeckoTerminal
 const POOLS = new Map();
@@ -97,7 +97,21 @@ async function candles0(mint, tf, agg, limit) {
 }
 // your wallet as a bank would show it: cash (SOL, USDC, USDT), the GTA stocks, everything else
 const T22 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+// the demo account: a fixed sample bag, priced live, so every page looks the way it will with a real wallet
+const DEMO_BAG = [['TTWofwAge91oFhZs7kpQdyrVRkmevgM88xijGvQFbKo', 12.5], ['Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh', 2.1], ['Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc', 18], ['XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX', .8], [USDC, 412.5]];
+async function demoHoldings() {
+  const meta = await tokens([SOL, ...DEMO_BAG.map(r => r[0])]), solPx = price(meta[SOL]), sol = 3.42;
+  const out = { sol, solUsd: solPx != null ? sol * solPx : null, solPx, cash: [], stocks: [], other: [], at: Date.now(), demo: true };
+  for (const [mint, ui] of DEMO_BAG) { const t = meta[mint], s = byMint(mint), px = price(t);
+    const row = { mint, account: 'demo', raw: '0', dec: 6, ui, prog: TOKEN, frozen: false, delegate: null, delegated: 0, sym: s ? s.sym : (t && t.symbol) || 'USDC', name: s ? s.name : (t && t.name) || 'USD Coin', icon: (t && t.icon) || (s && s.logo) || '', px, usd: px != null ? ui * px : null, chg: chg24(t), stock: s || null };
+    (mint === USDC ? out.cash : out.stocks).push(row); }
+  const sum = l => l.reduce((a, r) => a + (r.usd || 0), 0); out.cashUsd = sum(out.cash); out.stocksUsd = sum(out.stocks); out.otherUsd = 0;
+  out.total = (out.solUsd || 0) + out.cashUsd + out.stocksUsd;
+  out.dayUsd = [...out.stocks, ...out.cash].reduce((a, r) => a + (r.usd != null && r.chg != null ? r.usd - r.usd / (1 + r.chg / 100) : 0), 0) + (out.solUsd != null && chg24(meta[SOL]) != null ? out.solUsd - out.solUsd / (1 + chg24(meta[SOL]) / 100) : 0);
+  return out;
+}
 export async function holdings(owner) {
+  if (owner === DEMO) return demoHoldings();
   const [bal, a, b] = await Promise.all([
     rpc('getBalance', [owner, { commitment: 'confirmed' }]),
     rpc('getTokenAccountsByOwner', [owner, { programId: TOKEN }, { encoding: 'jsonParsed', commitment: 'confirmed' }]),
@@ -128,7 +142,7 @@ export async function holdings(owner) {
   return out;
 }
 // the last transactions that touched an address (the chain is the statement)
-export const history = (addr, limit = 25, before) => rpc('getSignaturesForAddress', [addr, { limit, ...(before ? { before } : {}), commitment: 'confirmed' }]);
+export const history = (addr, limit = 25, before) => addr === DEMO ? Promise.resolve([]) : rpc('getSignaturesForAddress', [addr, { limit, ...(before ? { before } : {}), commitment: 'confirmed' }]);
 export async function confirm(sig, ms = 60000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -154,4 +168,25 @@ export async function stockzCoins() {
   const sigs = await rpc('getSignaturesForAddress', [CONFIG.tag, { limit: 200, commitment: 'confirmed' }]), seen = new Map();
   for (const s of sigs || []) { if (s.err || !s.memo) continue; const m = /stockz:launch:([1-9A-HJ-NP-Za-km-z]{32,44}):([A-Z]{2,6})/.exec(s.memo); if (m && !seen.has(m[1])) seen.set(m[1], { mint: m[1], quote: m[2], t: (s.blockTime || 0) * 1000, sig: s.signature }); }
   SC = [...seen.values()]; SCat = Date.now(); return SC;
+}
+
+// what one transaction did to one wallet: money in and money out by asset, from the chain's own balance records (cached: it never changes)
+const TXD = new Map();
+export function txDetail(sig, owner) {
+  const k = sig + owner; if (TXD.has(k)) return TXD.get(k);
+  let hit = null; try { const c = JSON.parse(localStorage.getItem('stockz:txd:' + sig) || 'null'); if (c && c.o === owner) hit = c.d; } catch {}
+  const p = hit ? Promise.resolve(hit) : rpc('getTransaction', [sig, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }]).then(tx => {
+    if (!tx || !tx.meta) return null;
+    const keys = tx.transaction.message.accountKeys.map(x => typeof x === 'string' ? x : x.pubkey), i = keys.indexOf(owner), payer = keys[0] === owner, fee = (tx.meta.fee || 0) / 1e9;
+    let sol = i >= 0 ? (tx.meta.postBalances[i] - tx.meta.preBalances[i]) / 1e9 + (payer ? fee : 0) : 0;
+    const tok = {}, add = (list, sg) => (list || []).forEach(b => { if (b.owner !== owner) return; tok[b.mint] = (tok[b.mint] || 0) + sg * (+(b.uiTokenAmount || {}).uiAmountString || 0); });
+    add(tx.meta.preTokenBalances, -1); add(tx.meta.postTokenBalances, 1);
+    const deltas = Object.entries(tok).filter(([, v]) => Math.abs(v) > 1e-9).map(([mint, ui]) => ({ mint, ui }));
+    const w = deltas.findIndex(x => x.mint === SOL); if (w >= 0) { sol += deltas[w].ui; deltas.splice(w, 1); }          // wrapped SOL is SOL
+    if (Math.abs(sol) > (deltas.length ? .0025 : 1e-7)) deltas.unshift({ mint: SOL, ui: +sol.toFixed(9) });               // a token account's rent is not a payment
+    const d = { t: (tx.blockTime || 0) * 1000, fee: payer ? fee : 0, err: !!tx.meta.err, deltas };
+    try { localStorage.setItem('stockz:txd:' + sig, JSON.stringify({ o: owner, d })); } catch {}
+    return d;
+  }).catch(() => null);
+  TXD.set(k, p); return p;
 }

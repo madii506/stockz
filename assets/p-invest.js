@@ -29,8 +29,8 @@ export async function controls(mint) {
 
 export async function trade(main, ctx, rest) {
   const s = bySym((rest[0] || 'TTWO').toUpperCase()) || BASKET[0];
-  let side = rest[1] === 'sell' ? 'sell' : 'buy', pay = 'SOL', tf = '1W', mode = 'line', T = null, quote = null, redraw = () => {};
-  main.innerHTML = `<div class="ph1"><div><h1>Trade</h1><p>Tokenized stocks, routed through Jupiter. Your wallet signs every order.</p></div><span class="pill ${nyse().open ? 'g' : ''}"><span class="dot"></span>${esc(nyse().label)} · tokens trade 24/7</span></div>
+  let side = rest[1] === 'sell' ? 'sell' : 'buy', pay = store.get('pay') === 'USDC' ? 'USDC' : 'SOL', tf = '1W', mode = 'line', T = null, quote = null, redraw = () => {};
+  main.innerHTML = `<div class="ph1"><div><h1>Trade</h1><p>Tokenized stocks, routed through Jupiter. Your wallet signs every order.</p></div></div>
     <div class="picks" style="margin-bottom:18px">${BASKET.map(x => `<button data-s="${x.sym}" class="${x.sym === s.sym ? 'on' : ''}">${logo(x)}${x.sym}<small>${esc(x.name)}</small></button>`).join('')}</div>
     <div class="cols"><div class="stack">
       <div class="panel"><div class="qhead"><span class="tic">${logo(s)}<span><b style="font-size:18px">${esc(s.name)}</b><small>${s.sym} · ${esc(s.tok)} by ${s.issuer}</small></span></span><span class="px" id="px" data-live-px="${s.mint}">—</span><span class="num" id="ch" style="font-weight:700">—</span>
@@ -81,7 +81,7 @@ export async function trade(main, ctx, rest) {
     if (ctx.S) $('#pos', main).innerHTML = h ? (r ? `<dl class="kv"><dt>Shares (tokens)</dt><dd>${num(r.ui)} ${s.sym}</dd><dt>Value</dt><dd>${usd(r.usd)}</dd><dt>Today</dt><dd class="${tone(r.chg)}">${pct(r.chg)}</dd></dl>` : `<span class="mut sm">You don’t hold ${s.sym} yet.</span>`) : '<span class="mut sm">Loading…</span>';
   };
   $$('#side button', main).forEach(b => b.onclick = () => { side = b.dataset.v; $$('#side button', main).forEach(x => x.classList.toggle('on', x === b)); $('#amt', main).value = ''; quote = null; drawSide(); requote(); });
-  $('#pay', main).onchange = e => { pay = e.target.value; drawSide(); requote(); };
+  $('#pay', main).value = pay; $('#pay', main).onchange = e => { pay = e.target.value; drawSide(); requote(); };
   let qt = null, qn = 0;
   const requote = () => { clearTimeout(qt); qt = setTimeout(getQuote, 380); };
   async function getQuote() {
@@ -98,7 +98,7 @@ export async function trade(main, ctx, rest) {
       est.innerHTML = `<dl class="kv"><dt>You get</dt><dd>${num(got)} ${out.sym}</dd><dt>Value</dt><dd>${usd(o.outUsdValue != null ? +o.outUsdValue : null)}</dd><dt>Price impact</dt><dd class="${imp != null && Math.abs(imp) > 1 ? 'dn' : ''}">${imp != null ? imp.toFixed(2) + '%' : '—'}</dd><dt>Fees</dt><dd>${fee}</dd><dt>Route</dt><dd>${esc(route.length ? [...new Set(route)].join(' › ') : (o.router || 'Jupiter'))}</dd></dl>
         ${o.errorMessage ? `<div class="note r" style="margin-top:10px">${ICON.help}<span>${esc(o.errorMessage)}</span></div>` : ''}`;
       quote = { o, inp, out, v, got };
-      btn.disabled = !(ctx.S ? o.transaction : true); btn.textContent = ctx.S ? 'Review order' : 'Sign in to place this order';
+      btn.disabled = !(ctx.S && !ctx.S.demo ? o.transaction : true); btn.textContent = ctx.S ? 'Review order' : 'Sign in to place this order';
     } catch (e) { if (n !== qn) return; est.innerHTML = `<div class="note r">${ICON.help}<span>No quote right now: ${esc(e.message)}</span></div>`; }
   }
   $('#amt', main).oninput = requote;
@@ -137,7 +137,7 @@ export async function trade(main, ctx, rest) {
     const R = await Promise.all(BASKET.map(x => order({ inputMint: P.mint, outputMint: x.mint, amount: each, ...(ctx.S ? { taker: ctx.S.address } : {}) }).then(o => ({ x, o })).catch(e => ({ x, err: e.message }))));
     if (n !== bn) return;
     box.innerHTML = `<dl class="kv">${R.map(r => { const d = M[r.x.mint] && M[r.x.mint].decimals != null ? M[r.x.mint].decimals : 8; return `<dt>${r.x.sym}</dt><dd>${r.o ? num(+r.o.outAmount / 10 ** d) + ' (' + usd(r.o.outUsdValue != null ? +r.o.outUsdValue : null) + ')' : '<span class="dn">no route</span>'}</dd>`; }).join('')}</dl>`;
-    bq = { R, v, P }; go.disabled = !(ctx.S ? R.every(r => r.o && r.o.transaction) : true); go.textContent = ctx.S ? 'Review basket order' : 'Sign in to buy the basket'; };
+    bq = { R, v, P }; go.disabled = !(ctx.S && !ctx.S.demo ? R.every(r => r.o && r.o.transaction) : R.every(r => r.o)); go.textContent = ctx.S ? 'Review basket order' : 'Sign in to buy the basket'; };
   $('#bamt', main).oninput = () => { clearTimeout(bt); bt = setTimeout(bquote, 450); }; $('#bpay', main).onchange = bquote;
   $('#bgo', main).onclick = async () => { if (!ctx.S) return ctx.actions.needSignIn('trade/' + s.sym); if (!bq) return; const go = $('#bgo', main); go.disabled = true; go.innerHTML = '<span class="spin"></span> Approve all five in your wallet';
     try { await ctx.wallet(); const signed = await signAll(bq.R.map(r => b64d(r.o.transaction))); let ok = 0;

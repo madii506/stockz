@@ -162,7 +162,7 @@ export function quickBuy(ctx, mint, sym) {
   const q = async () => { const a = parseFloat($('#qa', v).value), k = ++n; o = null; $('#qb', v).disabled = true; if (!(a > 0)) return;
     try { const r = await order({ inputMint: SOL, outputMint: mint, amount: String(Math.floor(a * 1e9)), taker: ctx.S.address }); if (k !== n) return; o = r;
       $('#qe', v).innerHTML = `<dl class="kv"><dt>You get (est.)</dt><dd>${r.outUsdValue != null ? usd(+r.outUsdValue) : '—'} of $${esc(sym)}</dd><dt>Route</dt><dd>${esc(((r.routePlan || [])[0] || {}).swapInfo ? r.routePlan[0].swapInfo.label : 'Jupiter')}</dd></dl>${r.errorMessage ? `<div class="note r" style="margin-top:8px">${esc(r.errorMessage)}</div>` : ''}`;
-      $('#qb', v).disabled = !r.transaction; } catch (e) { $('#qe', v).textContent = 'No quote: ' + e.message; } };
+      $('#qb', v).disabled = !(r.transaction || (ctx.S && ctx.S.demo)); } catch (e) { $('#qe', v).textContent = 'No quote: ' + e.message; } };
   $('#qa', v).oninput = () => { clearTimeout(t); t = setTimeout(q, 350); }; q();
   $('#qb', v).onclick = async () => { const b = $('#qb', v); b.disabled = true; b.innerHTML = '<span class="spin"></span> Approve in wallet';
     try { await ctx.wallet(); const [s] = await signAll([b64d(o.transaction)]); const r = await execute(b64e(s), o.requestId); if (r.status !== 'Success') throw new Error(r.error || 'Not filled');

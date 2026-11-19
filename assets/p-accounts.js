@@ -1,6 +1,6 @@
 // STOCKZ · Accounts: overview, portfolio, activity and statements, all read from the chain
-import { $, $$, esc, usd, pct, tone, num, short, mask, ICON, BASKET, SOL, store, gtaLeft, when, ago, solscan, toast, nyse } from './core.js';
-import { tokens, price, chg24, history, candles, gtaIndex } from './net.js';
+import { $, $$, esc, usd, pct, tone, num, short, mask, ICON, BASKET, SOL, store, gtaLeft, when, ago, solscan, toast, nyse, CONFIG } from './core.js';
+import { tokens, price, chg24, history, candles, gtaIndex, txDetail } from './net.js';
 import { area, spark } from './chart.js';
 import { ALL } from './core.js';
 
@@ -27,7 +27,7 @@ function todo(a) {
 }
 function rail() {
   const g = gtaLeft();
-  return `<div class="gtacard"><h3>GTA VI</h3><div class="t" id="gtaT">${g.out ? 'Out now' : esc(g.text)}</div><div style="color:#c9d4ea;font-size:13px;margin-top:4px">${g.out ? 'Released November 19, 2026 \u00b7 day ' + g.day : 'until release on November 19'}</div></div>
+  return `<div class="gtacard"><h3>GTA VI</h3><div class="t" id="gtaT">${g.out ? 'Out now' : esc(g.text)}</div><div style="color:#c9d4ea;font-size:13px;margin-top:4px"><span id="gtaS">${g.out ? 'Released November 19, 2026 \u00b7 day ' + g.day : 'until release on November 19'}</span></div></div>
     <div class="panel"><header><h2>GTA VI Index</h2><span class="num" id="gxi" style="font-weight:750">\u2014</span></header><div class="chartbox" style="height:150px;padding:6px 8px"><canvas id="gxc"></canvas><div class="empty" id="gxe">Building the index\u2026</div></div>
       <div class="pad sm mut" style="padding-top:0">The five GTA VI stocks, equal weight, rebased to 100 a week ago. <span id="gxd"></span></div></div>
     <div class="panel"><header><h2>Market hours</h2><span class="pill ${nyse().open ? 'g' : ''}"><span class="dot"></span>${esc(nyse().label)}</span></header><div class="pad"><div class="hours">${hoursRows()}</div><p class="xs mut" style="margin:10px 0 0">The tokens trade around the clock. The shares behind them trade in New York, so prices can drift while Wall Street is closed.</p></div></div>
@@ -37,6 +37,9 @@ async function fillIndex(main) {
   try { const S = await gtaIndex(BASKET.map(s => s.mint)); if (S.length < 2) throw 0; const last = S[S.length - 1].c, e = $('#gxi', main); if (!e) return;
     e.textContent = last.toFixed(2); e.className = 'num ' + tone(last - 100); $('#gxe', main).hidden = true; area($('#gxc', main), S);
     const meta = await tokens(BASKET.map(s => s.mint)), d = BASKET.map(s => chg24(meta[s.mint])).filter(v => v != null), avg = d.length ? d.reduce((a, b) => a + b, 0) / d.length : null;
+    const rel = new Date(CONFIG.gta).getTime(), at = S.find(x => x.t >= rel);
+    if (Date.now() > rel && at && last) { const ch = (last / at.c - 1) * 100, el = $('#gtaS', main); if (el) el.innerHTML = `Day ${gtaLeft().day} \u00b7 the five GTA VI stocks are <b class="${tone(ch)}" style="color:${ch >= 0 ? '#53f0b0' : '#ff8fa3'}">${pct(ch)}</b> since launch`;
+      insight(main, 0, 'clock', `<b>GTA VI is out.</b> Since launch the five GTA VI stocks are <span class="${tone(ch)}">${pct(ch)}</span>, equal weight.`, '#/app/markets', 'See the basket'); }
     insight(main, 3, 'coins', `<b>The GTA VI Index is <span class="${tone(last - 100)}">${pct(last - 100)}</span> this week.</b> Five stocks, equal weight, rebased to 100 seven days ago.`, '#/app/markets', 'Compare them');
     $('#gxd', main).innerHTML = avg != null ? `Today: <b class="${tone(avg)}">${pct(avg)}</b> \u00b7 week: <b class="${tone(last - 100)}">${pct(last - 100)}</b>` : ''; }
   catch { const e = $('#gxe', main); if (e) e.textContent = 'The index needs chart data, which is unavailable right now.'; }
@@ -56,9 +59,9 @@ export async function overview(main, ctx) {
       <div class="stack">${rail()}</div></div>`;
     fillMarket(main); return;
   }
-  main.innerHTML = `<div class="ph1"><div><h1>${hello()}</h1><p>Account ${esc(mask(S.address))} · ${S.last ? 'Last sign-in ' + esc(when(S.last)) : 'Welcome to your first sign-in'}</p></div>
+  main.innerHTML = `<div class="ph1"><div><h1>${hello()}</h1><p>${S.demo ? 'Demo account · sample balances at live prices' : `Account ${esc(mask(S.address))} · ${S.last ? 'Last sign-in ' + esc(when(S.last)) : 'Welcome to your first sign-in'}`}</p></div>
       <div class="statusrow"><button class="btn ghost sm" id="rf">Refresh</button><a class="btn pink sm" href="#/app/trade/TTWO">${ICON.chart} Buy TTWO</a></div></div>
-    <div class="accts" id="accts">${['Checking · SOL', 'Cash · USD stablecoins', 'Investments · GTA stocks', 'Other tokens'].map(k => `<div class="acct"><div class="k"><span>${k}</span><span>${esc(mask(S.address))}</span></div><div class="v skel">$0,000.00</div><div class="s skel">loading</div></div>`).join('')}</div>
+    <div class="accts" id="accts">${['Checking · SOL', 'Cash · USD stablecoins', 'Investments · GTA stocks', 'Other tokens'].map(k => `<div class="acct"><div class="k"><span>${k}</span><span>${S.demo ? 'Demo' : esc(mask(S.address))}</span></div><div class="v skel">$0,000.00</div><div class="s skel">loading</div></div>`).join('')}</div>
     <div class="cols" style="margin-top:20px"><div class="stack">
       <div class="panel hero3"><header><h2>Total balance</h2><span class="sm" id="asof"></span></header>
         <div class="net"><div><div class="sm">Net worth</div><div class="big" id="nw">\u2014</div></div><div><div class="sm">Change today</div><div class="num" style="font-size:20px;font-weight:700" id="day">\u2014</div></div><canvas id="hs" class="hspark"></canvas></div>
@@ -109,7 +112,8 @@ export async function overview(main, ctx) {
   const load = force => ctx.hold(force).then(h => { paint(h); pv(h); }).catch(e => { $('#hp', main).innerHTML = `<tr><td colspan="5"><div class="note r">${ICON.help}<span>Balances could not load: ${esc(e.message)}</span></div></td></tr>`; });
   paint(ctx.cached()); load(false);
   $('#rf', main).onclick = () => load(true);
-  history(S.address, 6).then(l => { $('#ra', main).innerHTML = (l || []).length ? l.map(actRow).join('') : '<div class="empty2">No transactions yet.</div>'; }).catch(() => { $('#ra', main).innerHTML = '<div class="empty2">Activity is unavailable right now.</div>'; });
+  history(S.address, 6).then(l => { const box = $('#ra', main); if (!box) return; const L = l || []; box.innerHTML = L.length ? L.map(x => actRich(x, null, {})).join('') : `<div class="empty2">${S.demo ? 'No transactions in demo mode.' : 'No transactions yet.'}</div>`;
+    enrich(L, S.address, () => { const b = $('#ra', main); if (b) b.innerHTML = L.map(x => actRich(x, x._d, {})).join(''); }); }).catch(() => { $('#ra', main).innerHTML = '<div class="empty2">Activity is unavailable right now.</div>'; });
   const t = setInterval(() => { const g = gtaLeft(), e = $('#gtaT', main); if (e) e.textContent = g.out ? 'Out now' : g.text; }, 1000);
   return () => clearInterval(t);
 }
@@ -120,6 +124,34 @@ function insight(main, k, icon, html, href, label) {
   el.innerHTML = `<i class="ii">${ICON[icon] || ICON.chart}</i><span class="tx">${html}</span><a class="sm" href="${href}">${esc(label)}</a>`;
 }
 const memoText = m => { if (!m) return ''; const s = String(m).replace(/^\[\d+\]\s*/, ''); return s.startsWith('stockz:launch') ? 'Coin launched on STOCKZ' : s.startsWith('stockz:') ? 'STOCKZ OTC trade' : s.length > 60 ? s.slice(0, 60) + '…' : s; };
+// a transaction in words, like a bank statement line: "Bought 0.0431 TTWO with 0.1 SOL", "Received 0.5 SOL"
+const symOf = (m, meta) => { const s = ALL.find(x => x.mint === m); return m === SOL ? 'SOL' : s ? s.sym : meta && meta[m] && meta[m].symbol ? meta[m].symbol : short(m); };
+function describe(x, d, meta) {
+  const memo = String(x.memo || '').replace(/^\[\d+\]\s*/, '');
+  if (!d) return { kind: memo.startsWith('stockz:') ? 'stockz' : 'other', text: memoText(x.memo) || 'Transaction', amt: '' };
+  if (d.err) return { kind: 'other', text: 'Failed transaction (nothing moved but the fee)', amt: '' };
+  const f = y => `${num(Math.abs(y.ui))} ${esc(symOf(y.mint, meta))}`, ins = d.deltas.filter(y => y.ui > 0), outs = d.deltas.filter(y => y.ui < 0);
+  const amt = d.deltas.slice(0, 2).map(y => `<b class="num ${y.ui > 0 ? 'up' : ''}" style="display:block">${y.ui > 0 ? '+' : '\u2212'}${f(y)}</b>`).join('');
+  if (memo.startsWith('stockz:launch')) return { kind: 'stockz', text: 'Launched a coin on STOCKZ', amt };
+  if (memo.startsWith('stockz:')) return { kind: 'stockz', text: 'OTC trade' + (ins.length && outs.length ? `: ${outs.map(f).join(' + ')} for ${ins.map(f).join(' + ')}` : ''), amt };
+  if (ins.length && outs.length) { const st = ins.find(y => ALL.some(s => s.mint === y.mint)), so = outs.find(y => ALL.some(s => s.mint === y.mint));
+    return { kind: 'trade', text: st && !so ? `Bought ${f(st)} with ${outs.map(f).join(' + ')}` : so && !st ? `Sold ${f(so)} for ${ins.map(f).join(' + ')}` : `Swapped ${outs.map(f).join(' + ')} for ${ins.map(f).join(' + ')}`, amt }; }
+  if (outs.length) return { kind: 'out', text: `Sent ${outs.map(f).join(' + ')}`, amt };
+  if (ins.length) return { kind: 'in', text: `Received ${ins.map(f).join(' + ')}`, amt };
+  return { kind: 'other', text: memoText(x.memo) || 'Account update', amt: '' };
+}
+const KICON = { trade: 'chart', out: 'send', in: 'wallet', stockz: 'rocket', other: 'doc' };
+const actRich = (x, d, meta) => { const r = describe(x, d, meta);
+  return `<a class="it act" data-k="${r.kind}" href="${solscan(x.signature)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><i class="ai k-${r.kind}">${ICON[KICON[r.kind]]}</i><span class="ad"><b style="font-weight:600">${r.text}</b><small class="mut" style="display:block">${x.blockTime ? esc(when(x.blockTime * 1000)) : 'Pending'} \u00b7 ${esc(short(x.signature))}${d && d.fee ? ' \u00b7 fee ' + num(d.fee) + ' SOL' : ''}</small></span><span class="aa">${r.amt}${x.err ? '<span class="pill r">Failed</span>' : r.amt ? '' : '<span class="pill g">Done</span>'}</span></a>`; };
+// fill in the details a few at a time, newest first
+async function enrich(list, owner, onEach) {
+  let i = 0; const meta = {};
+  const work = async () => { while (i < list.length) { const x = list[i++]; const d = await txDetail(x.signature, owner); x._d = d;
+    const unknown = d ? d.deltas.map(y => y.mint).filter(m => m !== SOL && !ALL.some(s => s.mint === m) && !meta[m]) : [];
+    if (unknown.length) Object.assign(meta, await tokens(unknown).catch(() => ({})));
+    onEach(x, d, meta); } };
+  await Promise.all([work(), work(), work()]); return meta;
+}
 const actRow = x => `<a class="it" href="${solscan(x.signature)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><span><b style="font-weight:600">${esc(memoText(x.memo) || 'Transaction')}</b><small class="mut" style="display:block">${x.blockTime ? esc(when(x.blockTime * 1000)) : 'Pending'} · ${esc(short(x.signature))}</small></span><span class="pill ${x.err ? 'r' : 'g'}">${x.err ? 'Failed' : 'Done'}</span></a>`;
 
 export async function portfolio(main, ctx, rest) {
@@ -149,15 +181,25 @@ export function download(name, rows) {
 
 export async function activity(main, ctx) {
   if (!ctx.S) { main.innerHTML = `<div class="ph1"><div><h1>Activity</h1></div></div>` + ctx.guestPanel('see your activity'); return; }
-  const a = ctx.S.address; let tab = 'chain', last = null, all = [];
-  main.innerHTML = `<div class="ph1"><div><h1>Activity</h1><p>Every transaction that touched your account, straight from the chain.</p></div></div>
-    <div class="panel"><div class="tabs" id="tb"><button data-t="chain" class="on">On-chain</button><button data-t="rc">STOCKZ receipts</button></div><div class="list" id="al"><div class="empty2">Loading…</div></div>
+  const a = ctx.S.address; let tab = 'chain', last = null, all = [], kind = 'all', meta = {};
+  main.innerHTML = `<div class="ph1"><div><h1>Activity</h1><p>Every transaction that touched your account, in plain words, straight from the chain.</p></div><button class="btn ghost sm" id="acsv">${ICON.doc} Download CSV</button></div>
+    <div class="panel"><div class="tabs" id="tb"><button data-t="chain" class="on">On-chain</button><button data-t="rc">STOCKZ receipts</button></div>
+      <div class="pad chipsrow" id="kf">${[['all', 'All'], ['in', 'Money in'], ['out', 'Money out'], ['trade', 'Trades'], ['stockz', 'Launches and OTC']].map(([k, t]) => `<button class="chip${k === 'all' ? ' on' : ''}" data-k="${k}">${t}</button>`).join('')}</div>
+      <div class="list" id="al"><div class="empty2">Loading…</div></div>
     <div class="pad" style="text-align:center" id="more"><button class="btn ghost sm">Load more</button></div></div>`;
   const draw = () => {
     if (tab === 'rc') { const r = receipts(a); $('#al', main).innerHTML = r.length ? r.map(x => `<a class="it" href="${x.sig ? solscan(x.sig) : '#'}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><span><b style="font-weight:600">${esc(x.text)}</b><small class="mut" style="display:block">${esc(when(x.t))}${x.sig ? ' · ' + esc(short(x.sig)) : ''}</small></span><span class="pill ${x.ok === false ? 'r' : 'g'}">${esc(x.kind || 'Done')}</span></a>`).join('') : '<div class="empty2">No STOCKZ receipts on this device yet.</div>'; $('#more', main).hidden = true; return; }
-    $('#al', main).innerHTML = all.length ? all.map(actRow).join('') : '<div class="empty2">No transactions yet.</div>'; $('#more', main).hidden = !last;
+    const rows = all.filter(x => kind === 'all' || describe(x, x._d, meta).kind === kind);
+    $('#al', main).innerHTML = rows.length ? rows.map(x => actRich(x, x._d, meta)).join('') : `<div class="empty2">${all.length ? 'Nothing of this kind yet.' : 'No transactions yet.'}</div>`; $('#more', main).hidden = !last;
+    $('#kf', main).hidden = false;
   };
-  const load = async () => { try { const l = await history(a, 25, last || undefined); all = all.concat(l || []); last = l && l.length === 25 ? l[l.length - 1].signature : null; draw(); } catch (e) { $('#al', main).innerHTML = `<div class="empty2">Activity is unavailable: ${esc(e.message)}</div>`; } };
+  $$('#kf .chip', main).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#kf .chip', main).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  $('#acsv', main).onclick = () => { const rows = [['date', 'description', 'amounts', 'fee_sol', 'status', 'signature'], ...all.map(x => { const r = describe(x, x._d, meta), d = x._d;
+      return [x.blockTime ? new Date(x.blockTime * 1000).toISOString() : '', r.text.replace(/<[^>]+>/g, ''), d ? d.deltas.map(y => (y.ui > 0 ? '+' : '') + y.ui + ' ' + symOf(y.mint, meta)).join(' ') : '', d ? d.fee : '', x.err ? 'failed' : 'done', x.signature]; })];
+    download('stockz-activity.csv', rows); };
+  let pend = null; const redraw = () => { if (pend) return; pend = setTimeout(() => { pend = null; if (tab === 'chain' && document.body.contains($('#al', main) || document.body)) draw(); }, 120); };
+  const load = async () => { try { const l = await history(a, 25, last || undefined); const fresh = l || []; all = all.concat(fresh); last = l && l.length === 25 ? l[l.length - 1].signature : null; draw();
+      enrich(fresh, a, (x, d, m) => { Object.assign(meta, m); redraw(); }); } catch (e) { $('#al', main).innerHTML = `<div class="empty2">Activity is unavailable: ${esc(e.message)}</div>`; } };
   $$('#tb button', main).forEach(b => b.onclick = () => { tab = b.dataset.t; $$('#tb button', main).forEach(x => x.classList.toggle('on', x === b)); draw(); });
   $('#more button', main).onclick = load; load();
 }
@@ -167,7 +209,7 @@ export async function statements(main, ctx) {
   const a = ctx.S.address, now = new Date();
   main.innerHTML = `<div class="ph1 noprint"><div><h1>Statements</h1><p>Your account as a bank statement. Print it, save it as PDF or download it as CSV.</p></div><div class="statusrow"><button class="btn ghost sm" id="csv">${ICON.doc} CSV</button><button class="btn pri sm" id="pr">Print or save PDF</button></div></div>
     <div class="stmt" id="st"><div class="shead"><div><span class="logo"><b class="wm" style="font-size:28px">STOCKZ</b></span><div class="mut sm" style="margin-top:6px">Account statement</div></div>
-      <div style="text-align:right"><b>Account ${esc(mask(a))}</b><div class="mut sm" style="word-break:break-all;max-width:320px">${esc(a)}</div><div class="mut sm">Generated ${esc(now.toLocaleString())}</div></div></div>
+      <div style="text-align:right"><b>${ctx.S.demo ? 'Demo account' : 'Account ' + esc(mask(a))}</b><div class="mut sm" style="word-break:break-all;max-width:320px">${ctx.S.demo ? 'Sample balances at live prices. Not a real account.' : esc(a)}</div><div class="mut sm">Generated ${esc(now.toLocaleString())}</div></div></div>
       <div id="sb"><div class="skel" style="height:120px"></div></div></div>`;
   const [H, act] = await Promise.all([ctx.hold(false).catch(() => null), history(a, 25).catch(() => [])]);
   const lines = H ? [['Solana (SOL)', num(H.sol) + ' SOL', H.solUsd], ...H.cash.map(r => [r.name + ' (' + r.sym + ')', num(r.ui) + ' ' + r.sym, r.usd]), ...H.stocks.map(r => [r.name + ' (' + r.sym + ')', num(r.ui) + ' ' + r.sym, r.usd]), ...H.other.slice(0, 30).map(r => [r.name + ' (' + r.sym + ')', num(r.ui) + ' ' + r.sym, r.usd])] : [];

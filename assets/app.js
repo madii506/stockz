@@ -1,5 +1,5 @@
 // STOCKZ · online banking: the top bar, the side menu and the pages
-import { $, $$, esc, short, mask, ICON, EMBLEM, ALL, CONFIG, gtaLeft, nyse, store, toast, usd, on, emit, copy, theme } from './core.js';
+import { $, $$, esc, short, mask, ICON, EMBLEM, ALL, CONFIG, gtaLeft, nyse, store, toast, usd, on, emit, copy, theme, isDemo } from './core.js';
 import { W, connect } from './wallet.js';
 import { holdings, tokens, price, chg24, startTicks } from './net.js';
 
@@ -8,7 +8,7 @@ const NAV = [
   ['Invest', [['trade', 'chart', 'Trade'], ['markets', 'coins', 'Markets'], ['watch', 'star', 'Watchlist & alerts']]],
   ['Create', [['launch', 'rocket', 'Launch a coin'], ['coins', 'coins', 'Coins on STOCKZ']]],
   ['Move money', [['otc', 'desk', 'OTC desk'], ['transfer', 'send', 'Transfers']]],
-  ['Settings', [['security', 'shield', 'Security center'], ['help', 'help', 'Help']]],
+  ['Settings', [['prefs', 'gear', 'Preferences'], ['security', 'shield', 'Security center'], ['help', 'help', 'Help']]],
 ];
 const LOAD = {
   overview: () => import('./p-accounts.js').then(m => m.overview), portfolio: () => import('./p-accounts.js').then(m => m.portfolio),
@@ -16,9 +16,9 @@ const LOAD = {
   trade: () => import('./p-invest.js').then(m => m.trade), markets: () => import('./p-invest.js').then(m => m.markets), watch: () => import('./p-invest.js').then(m => m.watch),
   launch: () => import('./p-launch.js').then(m => m.launch), coins: () => import('./p-launch.js').then(m => m.coins),
   otc: () => import('./p-otc.js').then(m => m.otc), transfer: () => import('./p-more.js').then(m => m.transfer),
-  security: () => import('./p-more.js').then(m => m.security), help: () => import('./p-more.js').then(m => m.help),
+  security: () => import('./p-more.js').then(m => m.security), help: () => import('./p-more.js').then(m => m.help), prefs: () => import('./p-more.js').then(m => m.prefs),
 };
-let shell = null, cleanup = null, H = null, Hat = 0, Hp = null;
+let shell = null, cleanup = null, H = null, Hat = 0, Hp = null, NAVN = 0;
 export const ctx = {
   S: null, actions: null,
   // your balances, refreshed at most every 20 s unless asked
@@ -33,6 +33,7 @@ export const ctx = {
   nav: p => { location.hash = '#/app/' + p; },
   // make sure the wallet is connected before anything that signs
   async wallet() {
+    if (isDemo(ctx.S)) { demoGate(); throw new Error('Demo mode: nothing was sent.'); }
     if (!ctx.S) { ctx.actions.needSignIn(location.hash.slice(6)); throw new Error('Sign in first.'); }
     if (W.address === ctx.S.address) return W.address;
     const a = await connect(ctx.S.wallet);
@@ -52,15 +53,22 @@ export async function renderApp(root, route, S, actions) {
   $$('.side a, .bnav a', shell).forEach(a => a.classList.toggle('on', a.dataset.p === name));
   $('.side', shell).classList.remove('open');
   const main = $('#main', shell);
+  document.querySelectorAll('.veil, .menu').forEach(x => x.remove());
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   main.innerHTML = '<div class="panel"><div class="pad"><div class="skel" style="height:22px;width:40%;margin-bottom:12px"></div><div class="skel" style="height:120px"></div></div></div>';
   window.scrollTo(0, 0);
+  // each visit gets a number: a slow page that finishes after you have moved on must not touch the page you are on now
+  const my = ++NAVN;
+  main.classList.remove('pin'); void main.offsetWidth; main.classList.add('pin');
   try {
     const fn = await LOAD[name]();
+    if (my !== NAVN) return;
     const c = await fn(main, ctx, rest);
+    if (my !== NAVN) { if (typeof c === 'function') try { c(); } catch {} return; }
     cleanup = typeof c === 'function' ? c : null;
-    main.classList.remove('pin'); void main.offsetWidth; main.classList.add('pin');
-  } catch (e) { console.error(e); main.innerHTML = `<div class="note r">${ICON.help}<span>This page could not load: ${esc(e.message)}</span></div>`; }
+  } catch (e) { console.error(e); if (my !== NAVN) return; main.innerHTML = `<div class="note r">${ICON.help}<span>This page could not load: ${esc(e.message)}</span></div>`; }
+  if (my !== NAVN) return;
+  demoBar(root);
   $$('[data-signin]', main).forEach(b => b.addEventListener('click', () => actions.needSignIn(route)));
   document.title = (name === 'overview' ? 'Accounts' : $(`.side a[data-p="${name}"]`, shell)?.textContent.trim() || 'STOCKZ') + ' · STOCKZ';
 }
@@ -71,12 +79,11 @@ function frame() {
     <div class="atop"><button class="ibtn mbar" id="burger" aria-label="Menu">${ICON.list}</button>
       <a class="logo" href="#/app/overview">${EMBLEM}<b class="wm">STOCKZ</b></a>
       <div class="srch">${ICON.search}<input id="q" placeholder="Search stocks, coins or addresses" autocomplete="off" aria-label="Search"><div class="res" id="qres"></div></div>
-      <div class="chips"><span class="pill ${m.open ? '' : 'cl'}" id="mchip"><span class="dot"></span>${esc(m.label)}</span><span class="pill" id="gchip2">${ICON.clock} ${g.out ? 'GTA VI is out' : 'GTA VI in ' + esc(g.text)}</span>
+      <div class="chips">
         <button class="ibtn" id="thm" aria-label="Day or night" title="Day or night">${theme.get() === 'dark' ? ICON.sun : ICON.moon}</button><button class="ibtn" id="eye" aria-label="Hide balances" title="Hide balances">${ICON.eye}</button><button class="ibtn" id="bell" aria-label="Alerts">${ICON.bell}<span class="bd" id="bdot" hidden></span></button>
-        ${S ? `<button class="me" id="me"><span class="av">${esc(S.address.slice(0, 2).toUpperCase())}</span><b>${esc(short(S.address))}</b></button>` : `<button class="btn pink sm" data-signin>Sign in</button>`}</div></div>
+        ${S ? `<button class="me${isDemo(S) ? ' demo' : ''}" id="me"><span class="av">${isDemo(S) ? 'D' : esc(S.address.slice(0, 2).toUpperCase())}</span><b>${isDemo(S) ? 'Demo account' : esc(short(S.address))}</b></button>` : `<button class="btn pink sm" data-signin>Sign in</button>`}</div></div>
     <div class="tape" aria-label="Live prices"><div class="tr" id="tape">${ALL.map(x => `<a href="#/app/trade/${x.sym}" data-m="${x.mint}"><b>${x.sym}</b><span class="p">\u2014</span><span class="c"></span></a>`).join('')}</div></div>
-    <aside class="side">${NAV.map(([h, items]) => `<h6>${h}</h6>` + items.map(([p, i, t]) => `<a href="#/app/${p}" data-p="${p}">${ICON[i]}${t}</a>`).join('')).join('')}
-      <div class="ca">${CONFIG.ca ? `<b style="color:var(--head)">$STOCKZ</b><div style="word-break:break-all;margin:4px 0 8px">${esc(CONFIG.ca)}</div><button class="btn ghost sm" id="cacopy">Copy CA</button>` : `<b style="color:var(--head)">STOCKZ Online</b><div>Every action is a transaction your wallet signs. STOCKZ never holds funds.</div>`}</div></aside>
+    <aside class="side">${NAV.map(([h, items]) => `<h6>${h}</h6>` + items.map(([p, i, t]) => `<a href="#/app/${p}" data-p="${p}">${ICON[i]}${t}</a>`).join('')).join('')}</aside>
     <main class="main" id="main"></main>
     <nav class="bnav">${[['overview', 'home', 'Accounts'], ['trade', 'chart', 'Trade'], ['launch', 'rocket', 'Launch'], ['otc', 'desk', 'OTC']].map(([p, i, t]) => `<a href="#/app/${p}" data-p="${p}">${ICON[i]}<span>${t}</span></a>`).join('')}<button id="bmore">${ICON.list}<span>More</span></button></nav></div>`;
 }
@@ -92,10 +99,11 @@ function wire(root) {
     e.stopPropagation(); const old = $('.menu', root); if (old) return old.remove();
     const m = document.createElement('div'); m.className = 'menu';
     const last = S.last ? new Date(S.last).toLocaleString() : 'First sign-in';
-    m.innerHTML = `<div class="who"><b>Account ${esc(mask(S.address))}</b><small>${esc(S.wallet)} · Last sign-in: ${esc(last)}</small></div>
+    if (isDemo(S)) m.innerHTML = `<div class="who"><b>Demo account</b><small>Sample balances at live prices. Nothing here moves money.</small></div><button data-a="open">${ICON.wallet} Open an account</button><hr><button data-a="out">${ICON.out} Leave demo mode</button>`;
+    else m.innerHTML = `<div class="who"><b>Account ${esc(mask(S.address))}</b><small>${esc(S.wallet)} · Last sign-in: ${esc(last)}</small></div>
       <button data-a="copy">${ICON.doc} Copy wallet address</button><a href="https://solscan.io/account/${S.address}" target="_blank" rel="noopener">${ICON.ext} View on Solscan</a>
       <a href="#/app/security">${ICON.shield} Security center</a><hr><button data-a="out">${ICON.out} Sign out</button>`;
-    m.onclick = ev => { const a = ev.target.closest('[data-a]'); if (!a) return; if (a.dataset.a === 'copy') copy(S.address); if (a.dataset.a === 'out') ctx.actions.signOut(); m.remove(); };
+    m.onclick = ev => { const a = ev.target.closest('[data-a]'); if (!a) return; if (a.dataset.a === 'copy') copy(S.address); if (a.dataset.a === 'out') ctx.actions.signOut(); if (a.dataset.a === 'open') ctx.actions.leaveDemo(true); m.remove(); };
     $('.app', root).appendChild(m);
     setTimeout(() => document.addEventListener('click', function f(ev) { if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('click', f); } }), 0);
   };
@@ -104,6 +112,7 @@ function wire(root) {
   $('#thm', root).onclick = () => { const t = theme.get() === 'dark' ? 'light' : 'dark'; theme.set(t); $('#thm', root).innerHTML = t === 'dark' ? ICON.sun : ICON.moon; const r = location.hash; setTimeout(() => window.dispatchEvent(new Event('resize')), 30); };
   const priv = on => { document.body.classList.toggle('privacy', on); store.set('privacy', on); $('#eye', root).style.background = on ? 'rgba(232,36,122,.5)' : ''; };
   priv(!!store.get('privacy')); $('#eye', root).onclick = () => priv(!document.body.classList.contains('privacy'));
+  document.body.classList.toggle('notape', store.get('tape') === false);
   // the tape: every stock, live, scrolling
   const tape = $('#tape', root); tape.innerHTML += tape.innerHTML;
   const paintTape = async () => { const M = await tokens(ALL.map(x => x.mint));
@@ -190,4 +199,27 @@ function keysHelp() {
   v.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="max-width:420px"><header><h3>Keyboard shortcuts</h3><button class="x" aria-label="Close">${ICON.close}</button></header><div class="body"><div class="keys">${K.map(([a, b]) => `<div><kbd>${a}</kbd><span>${b}</span></div>`).join('')}</div></div></div>`;
   const close = () => { v.remove(); removeEventListener('keydown', esc1); }, esc1 = e => { if (e.key === 'Escape') close(); };
   v.addEventListener('click', e => { if (e.target === v || e.target.closest('.x')) close(); }); addEventListener('keydown', esc1); document.body.appendChild(v);
+}
+
+// demo mode: a strip that stays on screen, and the gate every action passes through
+export function demoBar(root) {
+  const old = document.querySelector('.demobar'); if (old) old.remove();
+  if (!isDemo(ctx.S)) return;
+  const b = document.createElement('div'); b.className = 'demobar';
+  b.innerHTML = `<span class="dt">${ICON.eye}</span><span class="dx"><b>Demo mode</b><small>Sample balances, live prices. Nothing here moves money.</small></span><button class="btn pink sm" data-o>Open an account</button><button class="dz" aria-label="Leave demo mode">${ICON.close}</button>`;
+  b.querySelector('[data-o]').onclick = () => ctx.actions.leaveDemo(true);
+  b.querySelector('.dz').onclick = () => ctx.actions.leaveDemo(false);
+  document.body.appendChild(b);
+}
+export function demoGate() {
+  if (document.querySelector('.veil.dg')) return;
+  document.querySelectorAll('.veil').forEach(x => x.remove());   // the order review or launch dialog behind it closes too
+  const v = document.createElement('div'); v.className = 'veil dg';
+  v.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Demo mode" style="max-width:440px"><header><h3>This is demo mode</h3><button class="x" aria-label="Close">${ICON.close}</button></header>
+    <div class="body"><p style="margin-top:0">Everything here runs on a sample account at live prices, so you can try every screen. Trading, launching, sending and OTC need your own account.</p>
+      <p class="mut sm" style="margin-bottom:0">Your STOCKZ account is your Solana wallet. No form, no password: your wallet signs you in.</p></div>
+    <footer><button class="btn ghost" data-k>Keep exploring</button><button class="btn pri" data-o>Open an account</button></footer></div>`;
+  const close = () => v.remove();
+  v.addEventListener('click', e => { if (e.target === v || e.target.closest('.x') || e.target.closest('[data-k]')) close(); if (e.target.closest('[data-o]')) { close(); ctx.actions.leaveDemo(true); } });
+  document.body.appendChild(v);
 }
