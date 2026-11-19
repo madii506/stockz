@@ -70,7 +70,7 @@ export async function renderApp(root, route, S, actions) {
   if (my !== NAVN) return;
   demoBar(root);
   $$('[data-signin]', main).forEach(b => b.addEventListener('click', () => actions.needSignIn(route)));
-  document.title = (name === 'overview' ? 'Accounts' : $(`.side a[data-p="${name}"]`, shell)?.textContent.trim() || 'STOCKZ') + ' · STOCKZ';
+  document.title = 'STOCKZ';
 }
 
 function frame() {
