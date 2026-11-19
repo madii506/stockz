@@ -41,9 +41,18 @@ export const order = p => { const q = { ...p }; if (q.taker === DEMO) delete q.t
 export const execute = (signedTransaction, requestId) => j(`${JUP}/ultra/v1/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signedTransaction, requestId }) }, 60000);
 // candles: the token's deepest pool on GeckoTerminal
 const POOLS = new Map();
+// GeckoTerminal allows about 30 calls a minute per visitor: a refused call waits a moment and tries again
+async function jr(url, tries = 2) { for (let i = 0; ; i++) { try { return await j(url); } catch (e) { if (i >= tries) throw e; await new Promise(r => setTimeout(r, 1800 * (i + 1))); } } }
+// where a coin trades: DexScreener first (its limit is ten times higher), GeckoTerminal if it has nothing
+async function dsPools(mint) {
+  const d = await j(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {}, 9000);
+  return (d.pairs || []).filter(p => p.chainId === 'solana' && p.pairAddress).map(p => ({ id: p.pairAddress, liq: +(p.liquidity || {}).usd || 0, name: `${(p.baseToken || {}).symbol || '?'} / ${(p.quoteToken || {}).symbol || '?'}`,
+    vol: +(p.volume || {}).h24 || 0, dex: p.dexId || '', ch: p.priceChange && p.priceChange.h24 != null ? +p.priceChange.h24 : null })).sort((a, b) => b.liq - a.liq);
+}
 export async function pools(mint) {
   const c = POOLS.get(mint); if (c && Date.now() - c.at < 300000) return c.v;
-  const d = await j(`${GT}/tokens/${mint}/pools?page=1`);
+  try { const v = await dsPools(mint); if (v.length) { POOLS.set(mint, { v, at: Date.now() }); return v; } } catch {}
+  const d = await jr(`${GT}/tokens/${mint}/pools?page=1`);
   const v = (d.data || []).map(x => ({ id: x.attributes.address, liq: +x.attributes.reserve_in_usd || 0, name: x.attributes.name, vol: x.attributes.volume_usd ? +x.attributes.volume_usd.h24 || 0 : 0,
     dex: ((x.relationships || {}).dex || {}).data ? x.relationships.dex.data.id : '', ch: x.attributes.price_change_percentage ? +x.attributes.price_change_percentage.h24 : null })).sort((a, b) => b.liq - a.liq);
   POOLS.set(mint, { v, at: Date.now() }); return v;
@@ -51,7 +60,7 @@ export async function pools(mint) {
 export const pool = async mint => (await pools(mint))[0] || null;
 export async function trades(mint) {
   const p = await pool(mint); if (!p) return [];
-  const d = await j(`${GT}/pools/${p.id}/trades`);
+  const d = await jr(`${GT}/pools/${p.id}/trades`);
   return (d.data || []).map(x => { const a = x.attributes, k = a.kind === 'buy', ours = (k ? a.to_token_address : a.from_token_address) === mint, buy = ours ? k : !k;
     // GeckoTerminal names the side from the pool's base token: flip it when our stock is the quote side
     const px = ours ? (k ? a.price_to_in_usd : a.price_from_in_usd) : (k ? a.price_from_in_usd : a.price_to_in_usd), amt = ours ? (k ? a.to_token_amount : a.from_token_amount) : (k ? a.from_token_amount : a.to_token_amount);
@@ -92,7 +101,7 @@ export async function gtaIndex(mints) {
 }
 async function candles0(mint, tf, agg, limit) {
   const p = await pool(mint); if (!p) return [];
-  const d = await j(`${GT}/pools/${p.id}/ohlcv/${tf}?aggregate=${agg}&limit=${limit}&currency=usd&token=${mint}`);
+  const d = await jr(`${GT}/pools/${p.id}/ohlcv/${tf}?aggregate=${agg}&limit=${limit}&currency=usd&token=${mint}`);
   return ((d.data && d.data.attributes && d.data.attributes.ohlcv_list) || []).map(c => ({ t: c[0] * 1000, o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +c[5] })).reverse();
 }
 // your wallet as a bank would show it: cash (SOL, USDC, USDT), the GTA stocks, everything else
